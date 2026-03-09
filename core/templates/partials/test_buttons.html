@@ -1,0 +1,19 @@
+<form class="test-buttons-container mt-2 mb-4 text-center">
+    {% csrf_token %} <button hx-post="{% url 'test_outcome' challenge_id=challenge.id status='success' %}"
+            hx-include="[name='csrfmiddlewaretoken']"
+            hx-target="closest form"
+            hx-swap="outerHTML"
+            class="btn btn-success"
+            style="margin-right: 10px; padding: 0.5rem 1rem; border-radius: 4px; border: none; cursor: pointer; background-color: #198754; color: white;">
+        Simulate Success
+    </button>
+
+    <button hx-post="{% url 'test_outcome' challenge_id=challenge.id status='failure' %}"
+            hx-include="[name='csrfmiddlewaretoken']"
+            hx-target="closest form"
+            hx-swap="outerHTML"
+            class="btn btn-danger"
+            style="padding: 0.5rem 1rem; border-radius: 4px; border: none; cursor: pointer; background-color: #dc3545; color: white;">
+        Simulate Failure
+    </button>
+</form>

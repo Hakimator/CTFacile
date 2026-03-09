@@ -1,0 +1,100 @@
+{% extends "core/base.html" %}
+
+{% block content %}
+<style>
+    .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 1.5rem;
+        margin-top: 2rem;
+    }
+
+    .card {
+        background: var(--surface-color);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        padding: 1.5rem;
+        transition: transform 0.2s;
+    }
+
+    .card:hover {
+        transform: translateY(-2px);
+    }
+
+    .card h3 {
+        color: var(--accent-primary);
+        margin-bottom: 0.5rem;
+    }
+
+    /* Offline LocalStorage Persistence Styling */
+    .writeup-box {
+        margin-top: 3rem;
+        background: var(--surface-color);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        padding: 1.5rem;
+    }
+
+    textarea {
+        width: 100%;
+        min-height: 150px;
+        background: var(--bg-color);
+        border: 1px solid var(--border-color);
+        color: var(--text-primary);
+        padding: 1rem;
+        border-radius: 4px;
+        margin-top: 1rem;
+        resize: vertical;
+    }
+
+    textarea:focus {
+        outline: 2px solid var(--accent-primary);
+        border-color: transparent;
+    }
+</style>
+
+<div class="header">
+    <h1>CTFacile Interactive Dashboard</h1>
+    <p style="color: var(--text-secondary); margin-top: 0.5rem;">Select a challenge to begin</p>
+</div>
+
+<div class="grid">
+    {% for category in categories %}
+        <div class="card">
+            <h3>{{ category.name }}</h3>
+            <p style="color: var(--text-secondary); margin-bottom: 1rem;">{{ category.description }}</p>
+            
+            <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                {% for challenge in category.challenges.all %}
+                    <button 
+                        @click="currentChallenge = {{ challenge.id }}; modalOpen = true"
+                        style="width: 100%; text-align: left; background: var(--bg-color); border: 1px solid var(--border-color);"
+                    >
+                        {{ challenge.title }} 
+                        <span style="float: right; color: var(--accent-success);">{{ challenge.base_points }} pts</span>
+                    </button>
+                    {% include 'partials/test_buttons.html' %}
+                {% empty %}
+                    <span style="color: var(--text-secondary); font-size: 0.875rem;">No challenges active.</span>
+                {% endfor %}
+            </div>
+        </div>
+    {% endfor %}
+</div>
+
+<!-- Alpine.JS LocalStorage Persistence for Write-ups -->
+<div class="writeup-box" x-data="{ draftText: '' }" x-init="draftText = localStorage.getItem('writeup_draft') || ''">
+    <h3>📝 Personal Write-Up Draft</h3>
+    <p style="color: var(--text-secondary); font-size: 0.875rem;">
+        Your notes are automatically saved to your browser on every keystroke. Impervious to network drops.
+    </p>
+    
+    <!-- The crucial x-model & @input combination for offline caching -->
+    <textarea 
+        placeholder="Start writing your methodology here..."
+        x-model="draftText"
+        @input="localStorage.setItem('writeup_draft', draftText)"
+    ></textarea>
+</div>
+
+{% endblock %}

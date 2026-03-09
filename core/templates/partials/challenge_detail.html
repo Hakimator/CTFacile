@@ -1,0 +1,97 @@
+<div class="challenge-modal p-6 bg-slate-800 rounded-lg shadow-xl" style="max-width: 600px; margin: 0 auto; color: white;">
+    <h2 class="text-2xl font-bold mb-2" style="color: var(--accent-primary);">{{ challenge.title }}</h2>
+    <div class="flex justify-between items-center mb-4">
+        <span class="text-sm text-gray-400">Category: {{ challenge.category.name }}</span>
+        <span class="px-3 py-1 rounded bg-blue-900 text-blue-200 font-semibold">{{ current_points }} pts</span>
+    </div>
+
+    <div class="prose prose-invert mb-6">
+        <p>{{ challenge.description }}</p>
+    </div>
+
+    {% if is_solved %}
+        <div class="p-4 mb-6 rounded bg-green-900 border border-green-700 text-center">
+            <span class="text-xl">✅</span>
+            <h3 class="font-bold text-green-200 mt-2">Challenge Solved!</h3>
+            <p class="text-sm text-green-300">Your team has already captured this flag.</p>
+        </div>
+    {% else %}
+
+        {# --- Logic A: Docker Sibling Architecture --- #}
+        {% if challenge.docker_image_tag %}
+            <div class="p-4 mb-6 rounded border border-slate-600 bg-slate-900">
+                <h3 class="font-semibold mb-2 flex items-center gap-2">
+                    🖥️ Interactive Target
+                </h3>
+                
+                {% if active_instance %}
+                    <div class="flex flex-col gap-3" 
+                         x-data="{ 
+                             expiresAt: new Date('{{ active_instance.expires_at.isoformat }}'),
+                             timeLeft: '',
+                             updateTimer() {
+                                 const now = new Date();
+                                 const diff = this.expiresAt - now;
+                                 if (diff <= 0) {
+                                     this.timeLeft = 'Expired (Sweeper in progress...)';
+                                     return;
+                                 }
+                                 const m = Math.floor(diff / 60000);
+                                 const s = Math.floor((diff % 60000) / 1000);
+                                 this.timeLeft = `${m}m ${s}s`;
+                             }
+                         }" 
+                         x-init="updateTimer(); setInterval(() => updateTimer(), 1000)">
+                        
+                        <div class="p-3 bg-black rounded font-mono text-sm break-all text-green-400 flex justify-between items-center">
+                            <span>http://{{ active_instance.traefik_subdomain }}</span>
+                            <a href="http://{{ active_instance.traefik_subdomain }}" target="_blank" class="px-2 py-1 bg-slate-700 hover:bg-slate-600 rounded text-xs text-white no-underline">Open ↗</a>
+                        </div>
+                        
+                        <div class="text-xs text-amber-500 flex items-center justify-between">
+                            <span>Time remaining before auto-kill:</span>
+                            <span class="font-mono font-bold" x-text="timeLeft"></span>
+                        </div>
+                    </div>
+                {% else %}
+                    <p class="text-sm text-gray-400 mb-4">This challenge requires an isolated container. Spinning one up takes about 5 seconds.</p>
+                    <form hx-post="{% url 'challenge_start' %}" 
+                          hx-target="#challenge-modal-content" 
+                          hx-swap="innerHTML">
+                        <input type="hidden" name="challenge_id" value="{{ challenge.id }}">
+                        <button type="submit" 
+                                class="w-full py-2 bg-blue-600 hover:bg-blue-500 rounded font-semibold transition-colors flex justify-center items-center gap-2"
+                                onclick="this.innerHTML='<span class=\'animate-spin inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full\'></span> Provisioning...'">
+                            ▶️ Start Machine
+                        </button>
+                    </form>
+                {% endif %}
+            </div>
+        {% endif %}
+
+        {# --- Logic B: Flag Submission Engine --- #}
+        <div class="p-4 rounded border border-slate-600 bg-slate-700/30">
+            <h3 class="font-semibold mb-3">Submit Flag</h3>
+            
+            <form hx-post="{% url 'flag_submission' %}" 
+                  hx-target="#submission-result" 
+                  hx-swap="innerHTML"
+                  class="flex gap-2">
+                <input type="hidden" name="challenge_id" value="{{ challenge.id }}">
+                <input type="text" 
+                       name="submitted_flag" 
+                       placeholder="CTFacile{...}" 
+                       required
+                       class="flex-1 px-3 py-2 bg-slate-900 border border-slate-600 rounded focus:border-blue-500 focus:outline-none text-white font-mono placeholder:text-slate-500">
+                <button type="submit" class="px-4 py-2 bg-green-600 hover:bg-green-500 rounded font-semibold transition-colors">
+                    Submit
+                </button>
+            </form>
+            
+            <div id="submission-result" class="mt-3 text-sm">
+                <!-- HTMX replaces this block on success/failure response -->
+            </div>
+        </div>
+
+    {% endif %}
+</div>

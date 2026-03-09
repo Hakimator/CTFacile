@@ -1,0 +1,12 @@
+django
+djangorestframework
+djangorestframework-simplejwt
+dj-database-url
+psycopg2-binary
+redis
+django-redis
+celery
+docker
+django-environ
+django-cors-headers
+django-htmx

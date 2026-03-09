@@ -1,0 +1,154 @@
+services:
+  # ==========================================
+  # 1. Reverse Proxy (Traefik)
+  # ==========================================
+  traefik:
+    image: traefik:v3.0
+    container_name: ctfacile_traefik
+    command:
+      - "--providers.docker.endpoint=unix:///var/run/docker.sock"
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--log.level=INFO"
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8080:8080"
+    volumes:
+      # WINDOWS FIX: Maps the Windows Docker Engine pipe to the Linux path
+      - //./pipe/docker_engine:/var/run/docker.sock
+    networks:
+      - traefik_public
+    restart: unless-stopped
+
+  # ==========================================
+  # 2. Stateful Data & Caching
+  # ==========================================
+  db:
+    image: postgres:15-alpine
+    container_name: ctfacile_db
+    environment:
+      POSTGRES_USER: ctfacile
+      POSTGRES_PASSWORD: ctfacilepassword
+      POSTGRES_DB: ctfacile_db
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - internal
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: ctfacile_redis
+    command: redis-server --save 60 1 --loglevel warning
+    volumes:
+      - redisdata:/data
+    networks:
+      - internal
+    restart: unless-stopped
+
+  # ==========================================
+  # 3. Object Storage (Official MinIO)
+  # ==========================================
+  minio:
+    image: minio/minio:RELEASE.2024-01-31T20-20-33Z
+    container_name: ctfacile_minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadminpassword
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - miniodata:/data
+    networks:
+      - internal
+    restart: unless-stopped
+
+  # ==========================================
+  # 4. Django Application 
+  # ==========================================
+  web:
+    build: .
+    container_name: ctfacile_web
+    command: python manage.py runserver 0.0.0.0:8000
+    volumes:
+      - .:/app
+      - //./pipe/docker_engine:/var/run/docker.sock
+    # ADD THIS SECTION BELOW
+    ports:
+      - "8000:8000" 
+    environment:
+      - DEBUG=1
+      - DATABASE_URL=postgres://ctfacile:ctfacilepassword@db:5432/ctfacile_db
+      - REDIS_URL=redis://redis:6379/0
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=minioadmin
+      - MINIO_SECRET_KEY=minioadminpassword
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.web.rule=Host(`ctfacile.local`)"
+      - "traefik.http.routers.web.entrypoints=web"
+      - "traefik.http.services.web.loadbalancer.server.port=8000"
+    networks:
+      - internal
+      - traefik_public
+    depends_on:
+      - db
+      - redis
+      - minio
+    restart: on-failure
+
+  # ==========================================
+  # 5. Background Workers & Celery
+  # ==========================================
+  celery_worker:
+    build: .
+    container_name: ctfacile_celery_worker
+    command: celery -A config worker -l INFO
+    volumes:
+      - .:/app
+      - //./pipe/docker_engine:/var/run/docker.sock
+    environment:
+      - DATABASE_URL=postgres://ctfacile:ctfacilepassword@db:5432/ctfacile_db
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/1
+    networks:
+      - internal
+    depends_on:
+      - redis
+      - db
+
+  celery_beat:
+    build: .
+    container_name: ctfacile_celery_beat
+    command: celery -A config beat -l INFO
+    volumes:
+      - .:/app
+    environment:
+      - DATABASE_URL=postgres://ctfacile:ctfacilepassword@db:5432/ctfacile_db
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/1
+    networks:
+      - internal
+    depends_on:
+      - redis
+      - db
+
+# ==========================================
+# Networks & Volumes
+# ==========================================
+networks:
+  internal:
+    driver: bridge
+  traefik_public:
+    driver: bridge
+
+volumes:
+  pgdata:
+  redisdata:
+  miniodata:
