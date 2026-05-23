@@ -164,7 +164,9 @@ def submit_flag(request, challenge_id):
     try:
         success, message = FlagValidationService.validate_submission(request.user, challenge, flag_payload)
         if success:
-            return HttpResponse(f'<div class="p-4 mb-4 text-green-200 bg-green-900 rounded border border-green-700">✅ {message}</div>')
+            resp = HttpResponse(f'<div class="p-4 mb-4 text-green-200 bg-green-900 rounded border border-green-700">✅ {message}</div>')
+            resp['HX-Trigger'] = 'flagSolved'
+            return resp
         else:
             return HttpResponse(f'<div class="p-4 mb-4 text-red-200 bg-red-900 rounded border border-red-700">❌ {message}</div>')
     except PermissionError as e:
