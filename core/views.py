@@ -1,371 +1,123 @@
 import logging
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated, AllowAny
-from rest_framework import status
-from django.http import JsonResponse, HttpResponse
-from django.shortcuts import get_object_or_404
+from django.shortcuts import render, redirect, get_object_or_404
+from django.urls import reverse
+from django.contrib.auth.decorators import login_required
+from django.http import HttpResponse, JsonResponse
 from django.core.cache import cache
 from django.utils import timezone
+from django.views.decorators.http import require_POST
 
-from core.models import Challenge, Team, TeamMembership, Category, Submission
-from core.serializers import (
-    FlagSubmissionSerializer,
-    StartChallengeSerializer,
-    UserRegistrationSerializer,
-    JoinTeamSerializer,
-    CategoryTreeSerializer,
-)
+from core.models import Challenge, Category, Submission, Team, ActiveInstance, CTFSession, TeamMembership, ChallengeTemplate, SiteSettings
 from core.services.flag_validation_service import FlagValidationService
 from core.services.scoring_service import ScoringService
 from core.services.docker_manager_service import DockerManagerService
-from rest_framework_simplejwt.views import TokenObtainPairView
+from core.services.team_service import TeamService
+from core.services.challenge_service import ChallengeService
+from core.services.writeup_service import WriteUpService
+from core.services.sos_service import SOSTicketService
+from core.services.game_control_service import GameControlService
+from core.services.challenge_builder_service import ChallengeBuilderService
 
 logger = logging.getLogger(__name__)
 
-
-class SubmitFlagView(APIView):
-    """
-    API Endpoint for submitting CTF flags.
-    Acts purely as the HTTP Transport layer. Delegates all business logic,
-    rate limiting, caching, and database writes to FlagValidationService.
-    """
-
-    permission_classes = [IsAuthenticated]
-
-    def post(self, request, *args, **kwargs):
-        # 1. Deserialize and validate incoming JSON
-        serializer = FlagSubmissionSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-
-        challenge_id = serializer.validated_data["challenge_id"]
-        submitted_flag = serializer.validated_data["submitted_flag"]
-
-        user = request.user
-
-        # 2. Fetch the User's Active Team
-        # Assuming the user belongs to at least one team for this session logic
-        team = user.teams.first()
-        if not team:
-            return Response(
-                {
-                    "success": False,
-                    "message": "You must be part of a team to submit flags.",
-                },
-                status=status.HTTP_403_FORBIDDEN,
-            )
-
-        # 3. Fetch the Challenge safely
-        challenge = get_object_or_404(Challenge, id=challenge_id)
-
-        # 4. Handoff to the Brain (Service Layer)
-        try:
-            result = FlagValidationService.process_submission(
-                user=user, team=team, challenge=challenge, submitted_flag=submitted_flag
-            )
-
-            # Map Service layer rate-limiting response (429) if triggered
-            if result.get("status_code") == 429:
-                if "HX-Request" in request.headers:
-                    return HttpResponse(
-                        '<div class="p-3 bg-yellow-900 border border-yellow-700 text-yellow-200 rounded">⏳ Rate limited. Please wait.</div>',
-                        status=429,
-                    )
-                return Response(result, status=status.HTTP_429_TOO_MANY_REQUESTS)
-
-            if "HX-Request" in request.headers:
-                if result.get("success"):
-                    return HttpResponse(
-                        '<div class="p-3 bg-green-900 border border-green-700 text-green-200 rounded">✅ Correct! Points added to your team.</div>'
-                    )
-                else:
-                    return HttpResponse(
-                        '<div class="p-3 bg-red-900 border border-red-700 text-red-200 rounded">❌ Incorrect flag. Try again.</div>'
-                    )
-
-            return Response(result, status=status.HTTP_200_OK)
-
-        except Exception as e:
-            logger.error(f"Error processing flag submission for User {user.id}: {e}")
-            return Response(
-                {
-                    "success": False,
-                    "message": "An internal error occurred while validating the flag.",
-                },
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
-
-
-class StartChallengeView(APIView):
-    """
-    API Endpoint for spinning up isolated Docker containers for specific challenges.
-    Delegates daemon interactions and loadbalancer routing to the DockerManagerService.
-    """
-
-    permission_classes = [IsAuthenticated]
-
-    def post(self, request, *args, **kwargs):
-        serializer = StartChallengeSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-
-        challenge_id = serializer.validated_data["challenge_id"]
-        user = request.user
-        team = user.teams.first()
-
-        if not team:
-            return Response(
-                {
-                    "success": False,
-                    "message": "You must be part of a team to start a challenge.",
-                },
-                status=status.HTTP_403_FORBIDDEN,
-            )
-
-        challenge = get_object_or_404(Challenge, id=challenge_id)
-
-        if not challenge.docker_image_tag:
-            return Response(
-                {
-                    "success": False,
-                    "message": "This is a static challenge, no machine needed.",
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        try:
-            active_instance = DockerManagerService.start_challenge_instance(
-                team, challenge
-            )
-
-            if "HX-Request" in request.headers:
-                return challenge_detail(request, challenge.id)
-
-            return Response(
-                {
-                    "success": True,
-                    "message": "Machine started.",
-                    "subdomain": active_instance.traefik_subdomain,
-                    "expires_at": active_instance.expires_at,
-                },
-                status=status.HTTP_200_OK,
-            )
-
-        except Exception as e:
-            logger.error(
-                f"Failed to start challenge '{challenge.title}' for team {team.name}: {e}"
-            )
-
-            if "HX-Request" in request.headers:
-                return HttpResponse(
-                    '<div class="p-3 bg-red-900 border border-red-700 text-red-200 rounded text-sm text-center">Service unavailable. Docker daemon failed to provision machine.</div>',
-                    status=503,
-                )
-
-            return Response(
-                {
-                    "success": False,
-                    "message": "Service unavailable. Docker daemon failed to provision machine.",
-                },
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
-            )
-
-
-class RegisterView(APIView):
-    """
-    API Endpoint for User Registration.
-    """
-
-    permission_classes = [AllowAny]
-
-    def post(self, request):
-        serializer = UserRegistrationSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-        return Response(
-            {"success": True, "message": "User created successfully."},
-            status=status.HTTP_201_CREATED,
-        )
-
-
-class SecureTokenObtainPairView(TokenObtainPairView):
-    """
-    Strict XSS-protected JWT Login endpoint.
-    Moves the refresh token to an HttpOnly, Lax cookie so the frontend JS cannot access it.
-    """
-
-    def post(self, request, *args, **kwargs):
-        response = super().post(request, *args, **kwargs)
-        if response.status_code == 200:
-            refresh = response.data.get("refresh")
-            if refresh:
-                response.set_cookie(
-                    key="refresh_token", value=refresh, httponly=True, samesite="Lax"
-                )
-                del response.data["refresh"]
-        return response
-
-
-class JoinTeamView(APIView):
-    """
-    API Endpoint for joining a team via Join Code.
-    Strictly prevents spying by checking if the user is already in a team for the session.
-    """
-
-    permission_classes = [IsAuthenticated]
-
-    def post(self, request, *args, **kwargs):
-        serializer = JoinTeamSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-
-        join_code = serializer.validated_data["join_code"]
-        team = get_object_or_404(Team, join_code=join_code)
-
-        user = request.user
-
-        # Security Rule: Spying Prevention
-        if TeamMembership.objects.filter(
-            user=user, team__session=team.session
-        ).exists():
-            return Response(
-                {
-                    "success": False,
-                    "message": "You are already in a team for this CTF Session.",
-                },
-                status=status.HTTP_403_FORBIDDEN,
-            )
-
-        TeamMembership.objects.create(user=user, team=team)
-        return Response(
-            {"success": True, "message": f"Successfully joined team {team.name}."},
-            status=status.HTTP_200_OK,
-        )
-
-
-class SkillTreeView(APIView):
-    """
-    API Endpoint for rendering the visual CTF skill tree.
-    Returns categorized challenges decorated with solve states and current dynamic values.
-    """
-
-    permission_classes = [IsAuthenticated]
-
-    def get(self, request, *args, **kwargs):
-        categories = Category.objects.prefetch_related("challenges").all()
-        serializer = CategoryTreeSerializer(
-            categories, many=True, context={"request": request}
-        )
-        return Response(serializer.data, status=status.HTTP_200_OK)
-
-
-class LeaderboardView(APIView):
-    """
-    API Endpoint for rendering the scoreboard ranking.
-    Agressively cached for 60 seconds to prevent Redis/PostgreSQL flooding during peak CTF traffic.
-    """
-
-    permission_classes = [IsAuthenticated]
-
-    def get(self, request, *args, **kwargs):
-        user = request.user
-        team = user.teams.first()
-
-        if not team:
-            return Response(
-                {
-                    "success": False,
-                    "message": "You must be part of a team to view the leaderboard.",
-                },
-                status=status.HTTP_403_FORBIDDEN,
-            )
-
-        session_id = team.session.id
-        cache_key = f"leaderboard_{session_id}"
-        cached_data = cache.get(cache_key)
-
-        if cached_data is not None:
-            return Response(cached_data, status=status.HTTP_200_OK)
-
-        # Re-calculate leaderboard
-        # Fetching all teams for the active session
-        teams = Team.objects.filter(session_id=session_id)
-
-        leaderboard = []
-        for t in teams:
-            total_score = 0
-            # Get IDs of all challenges this team has successfully solved
-            solved_challenge_ids = Submission.objects.filter(
-                team=t, is_correct=True
-            ).values_list("challenge__id", "challenge__base_points")
-
-            # Map their solve count through the ScoringService to get current values
-            for cid, base_pts in solved_challenge_ids:
-                total_score += ScoringService.calculate_dynamic_points(cid, base_pts)
-
-            leaderboard.append({"team_name": t.name, "score": total_score})
-
-        # Sort descending by score
-        leaderboard.sort(key=lambda x: x["score"], reverse=True)
-
-        # Cache the computationally expensive ranking payload for 60s
-        cache.set(cache_key, leaderboard, 60)
-
-        return Response(leaderboard, status=status.HTTP_200_OK)
-
-
-from django.views.generic import TemplateView
-from django.http import JsonResponse
-from django.shortcuts import render
-from core.models import ActiveInstance
-
-
-class DashboardView(TemplateView):
-    template_name = "core/dashboard.html"
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        # Prefetch the categories and their related challenges to pass directly to HTML
-        context["categories"] = Category.objects.prefetch_related("challenges").all()
-        return context
+def home(request):
+    if request.user.is_authenticated:
+        return redirect('dashboard')
+    return redirect('login')
 
 
 def health_ping(request):
-    """
-    Simple 200 OK endpoint for the Alpine.js Cockroach heartbeat protocol.
-    If the worker goes down or the load balancer drops, this will fail and
-    trigger the UI's offline mode.
-    """
-    return JsonResponse({"status": "alive", "timestamp": str(timezone.now())})
+    return JsonResponse({"status": "alive"})
 
 
-def challenge_detail(request, challenge_id):
-    """
-    HTMX endpoint to render the contents of a specific Challenge Modal.
-    Determines if the team already solved it and interacts with ActiveInstance
-    to display connection details or a "Start Machine" button.
-    """
-    if not request.user.is_authenticated:
-        return JsonResponse({"error": "Unauthorized"}, status=401)
+@login_required
+def team_dashboard(request):
+    active_session = CTFSession.objects.filter(is_active=True).first()
+    if not active_session:
+        return render(request, 'core/team_join_create.html', {"error": "No active CTF session right now."})
 
-    challenge = get_object_or_404(Challenge, id=challenge_id)
-    team = request.user.teams.first()
+    membership = TeamMembership.objects.filter(user=request.user, team__session=active_session).first()
+    if membership:
+        team = membership.team
+        session_scores = ScoringService.calculate_scores_for_session(active_session.id)
+        total_score = session_scores.get(team.id, 0)
+        return render(request, 'core/team_detail.html', {'team': team, 'total_score': total_score, 'session': active_session})
+    else:
+        return render(request, 'core/team_join_create.html', {'session': active_session})
+
+
+@require_POST
+@login_required
+def create_team_action(request):
+    active_session = CTFSession.objects.filter(is_active=True).first()
+    if not active_session:
+        return HttpResponse('<div class="text-red-500">Error: No active CTF session.</div>', status=400)
+    team_name = request.POST.get('team_name', '')
+    try:
+        TeamService.create_team(request.user, active_session, team_name)
+        response = HttpResponse()
+        response['HX-Redirect'] = reverse('team_dashboard')
+        return response
+    except ValueError as e:
+        return HttpResponse(f'<div class="p-4 bg-red-900 border border-red-500 text-red-200 rounded">Error: {str(e)}</div>', status=400)
+
+
+@require_POST
+@login_required
+def join_team_action(request):
+    active_session = CTFSession.objects.filter(is_active=True).first()
+    if not active_session:
+        return HttpResponse('<div class="text-red-500">Error: No active CTF session.</div>', status=400)
+    join_code = request.POST.get('join_code', '')
+    try:
+        TeamService.join_team(request.user, active_session, join_code)
+        response = HttpResponse()
+        response['HX-Redirect'] = reverse('team_dashboard')
+        return response
+    except ValueError as e:
+        return HttpResponse(f'<div class="p-4 bg-red-900 border border-red-500 text-red-200 rounded">Error: {str(e)}</div>', status=400)
+
+
+@login_required
+def dashboard(request):
+    team_membership = getattr(request.user, 'teammembership', None)
+    if team_membership:
+        team = team_membership.team
+    else:
+        team = getattr(request.user, 'teams', None)
+        team = team.first() if team else None
 
     if not team:
-        return JsonResponse({"error": "You must be part of a team."}, status=403)
+        return redirect('team_dashboard')
 
-    # 1. State checking
-    is_solved = Submission.objects.filter(
-        team=team, challenge=challenge, is_correct=True
-    ).exists()
-    current_points = ScoringService.calculate_dynamic_points(
-        challenge.id, challenge.base_points
-    )
+    tree_data = ChallengeService.get_team_skill_tree(team.id)
+    context = {
+        'tree_data': tree_data,
+        'team': team
+    }
+    return render(request, 'core/dashboard.html', context)
 
-    # 2. Docker Sibling Logic
+
+@login_required
+def challenge_detail(request, challenge_id):
+    challenge = get_object_or_404(Challenge, id=challenge_id)
+    team_membership = getattr(request.user, 'teammembership', None)
+    team = None
+    if team_membership:
+        team = team_membership.team
+    else:
+        team = getattr(request.user, 'teams', None)
+        team = team.first() if team else None
+
+    if not team:
+        return HttpResponse('<div class="text-red-500">You must be part of a team.</div>', status=403)
+
+    is_solved = Submission.objects.filter(team=team, challenge=challenge, is_correct=True).exists()
+    current_points = ScoringService.calculate_dynamic_points(challenge.id, challenge.base_points)
+
     active_instance = None
     if challenge.docker_image_tag:
-        active_instance = ActiveInstance.objects.filter(
-            team=team, challenge=challenge, expires_at__gt=timezone.now()
-        ).first()
+        active_instance = ActiveInstance.objects.filter(team=team, challenge=challenge, expires_at__gt=timezone.now()).first()
 
     context = {
         "challenge": challenge,
@@ -374,38 +126,238 @@ def challenge_detail(request, challenge_id):
         "current_points": current_points,
         "active_instance": active_instance,
     }
-
     return render(request, "partials/challenge_detail.html", context)
 
 
-def test_outcome(request, challenge_id, status):
-    """
-    Solid test mechanism endpoint.
-    """
-    if not request.user.is_authenticated:
-        return HttpResponse("Unauthorized", status=401)
-        
-    if request.method == "POST":
-        challenge = get_object_or_404(Challenge, id=challenge_id)
-        team = request.user.teams.first()
+@login_required
+def leaderboard(request):
+    team = request.user.teams.first()
+    if not team:
+        return HttpResponse("You must be part of a team.", status=403)
 
-        if not team:
-            return HttpResponse('<div class="p-3 bg-red-900 border border-red-700 text-red-200 rounded">❌ You must be part of a team.</div>', status=403)
-            
-        is_correct = (status == 'success')
-        
-        # Create immutable submission
-        Submission.objects.create(
-            user=request.user,
-            team=team,
-            challenge=challenge,
-            submitted_payload=f"TEST_PAYLOAD_{'SUCCESS' if is_correct else 'FAILURE'}",
-            is_correct=is_correct
-        )
-        
-        if is_correct:
-            return HttpResponse(f'<span class="text-success font-bold" style="color: #198754;">Validé ! (+{challenge.base_points} Points)</span>')
+    session_id = team.session.id
+    cache_key = f"leaderboard_ui_{session_id}"
+    cached_board = cache.get(cache_key)
+
+    if cached_board is None:
+        session_scores = ScoringService.calculate_scores_for_session(session_id)
+        teams_qs = Team.objects.filter(session_id=session_id)
+        leaderboard_data = [
+            {"team": t, "score": session_scores.get(t.id, 0)}
+            for t in teams_qs
+        ]
+        leaderboard_data.sort(key=lambda x: x["score"], reverse=True)
+        cached_board = leaderboard_data
+        cache.set(cache_key, cached_board, 60)
+
+    return render(request, 'core/leaderboard.html', {'leaderboard': cached_board})
+
+
+# --- Action Endpoints (HTMX Partial Responders) ---
+
+@require_POST
+@login_required
+def submit_flag(request, challenge_id):
+    challenge = get_object_or_404(Challenge, id=challenge_id)
+    flag_payload = request.POST.get('flag', '')
+
+    try:
+        success, message = FlagValidationService.validate_submission(request.user, challenge, flag_payload)
+        if success:
+            return HttpResponse(f'<div class="p-4 mb-4 text-green-200 bg-green-900 rounded border border-green-700">✅ {message}</div>')
         else:
-            return HttpResponse('<span class="text-danger font-bold" style="color: #dc3545;">Échec ! (Veuillez réessayer)</span>')
-            
-    return HttpResponse("Method Not Allowed", status=405)
+            return HttpResponse(f'<div class="p-4 mb-4 text-red-200 bg-red-900 rounded border border-red-700">❌ {message}</div>')
+    except PermissionError as e:
+        return HttpResponse(f'<div class="p-4 mb-4 text-yellow-200 bg-yellow-900 rounded border border-yellow-700">🔒 {str(e)}</div>', status=403)
+    except ValueError as e:
+        return HttpResponse(f'<div class="p-4 mb-4 text-red-200 bg-red-900 rounded border border-red-700">❌ Error: {str(e)}</div>')
+
+
+@require_POST
+@login_required
+def submit_writeup(request, challenge_id):
+    team_membership = getattr(request.user, 'teammembership', None)
+    if team_membership:
+        team = team_membership.team
+    else:
+        team = getattr(request.user, 'teams', None)
+        team = team.first() if team else None
+
+    if not team:
+        return HttpResponse('<div class="p-4 mb-4 text-red-200 bg-red-900 rounded border border-red-700">❌ Error: You must join a team.</div>')
+
+    content = request.POST.get('writeup_content', '')
+    try:
+        WriteUpService.submit_writeup(team.id, challenge_id, content)
+        return HttpResponse('<div class="p-4 mb-4 text-green-200 bg-green-900 rounded border border-green-700">📝 Write-up saved successfully!</div>')
+    except PermissionError as e:
+        return HttpResponse(f'<div class="p-4 mb-4 text-red-200 bg-red-900 rounded border border-red-700">❌ Error: {str(e)}</div>', status=403)
+    except ValueError as e:
+        return HttpResponse(f'<div class="p-4 mb-4 text-red-200 bg-red-900 rounded border border-red-700">❌ Error: {str(e)}</div>', status=400)
+
+
+@require_POST
+@login_required
+def create_sos_ticket(request, challenge_id):
+    team_membership = getattr(request.user, 'teammembership', None)
+    if team_membership:
+        team = team_membership.team
+    else:
+        team = getattr(request.user, 'teams', None)
+        team = team.first() if team else None
+
+    if not team:
+        return HttpResponse('<div class="p-4 mb-4 text-red-200 bg-red-900 rounded border border-red-700">❌ Error: You must join a team.</div>')
+
+    issue_description = request.POST.get('issue_description', '')
+    try:
+        SOSTicketService.create_ticket(request.user, team.id, challenge_id, issue_description)
+        return HttpResponse('<div class="p-4 mb-4 text-yellow-200 bg-yellow-900/80 rounded border border-yellow-700">🚨 SOS Beacon activated! A mentor will be with you shortly.</div>')
+    except Exception as e:
+        return HttpResponse(f'<div class="p-4 mb-4 text-red-200 bg-red-900 rounded border border-red-700">❌ Error: {str(e)}</div>', status=400)
+
+
+def live_cyber_map(request):
+    from core.models import SiteSettings as SiteSettingsModel
+    site = SiteSettingsModel.load()
+    return render(request, 'core/live_map.html', {'is_paused': site.is_ctf_paused})
+
+
+# --- CTF Builder Engine Views ---
+
+@login_required
+def builder_dashboard(request):
+    templates = ChallengeTemplate.objects.all().select_related('category')
+    return render(request, 'core/builder_dashboard.html', {'templates': templates})
+
+
+@login_required
+def get_template_form(request, template_id):
+    template = get_object_or_404(ChallengeTemplate, pk=template_id)
+    variables = template.variables.all()
+    return render(request, 'partials/template_form.html', {
+        'template': template,
+        'variables': variables,
+    })
+
+
+@require_POST
+@login_required
+def submit_built_challenge(request):
+    template_id = request.POST.get('template_id')
+    category_id = request.POST.get('category_id')
+    title = request.POST.get('title', '')
+    base_points = int(request.POST.get('base_points', 100))
+    # Instructor-supplied description override (falls back to template description in service)
+    custom_description = request.POST.get('description', '').strip() or None
+    # Internal port override (only relevant for CONTAINER challenges)
+    _raw_port = request.POST.get('internal_port', '').strip()
+    internal_port = int(_raw_port) if _raw_port.isdigit() else None
+
+    # Extract custom_* fields into a dict
+    custom_params = {
+        key.replace('custom_', '', 1): value
+        for key, value in request.POST.items()
+        if key.startswith('custom_') and value
+    }
+
+    active_session = CTFSession.objects.filter(is_active=True).first()
+    if not active_session:
+        return HttpResponse(
+            '<div class="p-4 text-red-200 bg-red-900 rounded border border-red-700">'
+            '❌ No active CTF session found.</div>',
+            status=400
+        )
+
+    try:
+        challenge = ChallengeBuilderService.build_challenge(
+            session_id=active_session.id,
+            category_id=category_id,
+            template_id=template_id,
+            title=title,
+            base_points=base_points,
+            custom_params_dict=custom_params,
+            custom_description=custom_description,
+            internal_port=internal_port,
+        )
+        return HttpResponse(
+            f'<div class="p-4 text-green-200 bg-green-900 rounded border border-green-700">'
+            f'✅ Challenge <strong>{challenge.title}</strong> deployed successfully! '
+            f'(ID: {challenge.id}, Type: {challenge.challenge_type})</div>'
+        )
+    except ValueError as e:
+        return HttpResponse(
+            f'<div class="p-4 text-red-200 bg-red-900 rounded border border-red-700">'
+            f'❌ Validation Error: {str(e)}</div>',
+            status=400
+        )
+    except Exception as e:
+        logger.error(f"Builder Engine failure: {e}")
+        return HttpResponse(
+            f'<div class="p-4 text-red-200 bg-red-900 rounded border border-red-700">'
+            f'❌ Build failed: {str(e)}</div>',
+            status=500
+        )
+
+
+def live_cyber_map_data(request):
+    data = GameControlService.get_live_map_data()
+    return render(request, 'partials/live_map_data.html', data)
+
+
+@require_POST
+@login_required
+def toggle_ctf_pause(request):
+    try:
+        is_paused = GameControlService.toggle_ctf_state(request.user)
+        btn_text = "Resume CTF" if is_paused else "Pause CTF"
+        btn_color = "bg-green-600 hover:bg-green-700" if is_paused else "bg-red-600 hover:bg-red-700"
+        return HttpResponse(
+            f'<button hx-post="{reverse("toggle_ctf_pause")}" hx-swap="outerHTML" '
+            f'class="{btn_color} text-white px-4 py-2 rounded font-bold transition">{btn_text}</button>'
+        )
+    except PermissionError as e:
+        return HttpResponse(f'<div class="text-red-500">❌ {str(e)}</div>', status=403)
+
+
+from django.template import engines
+
+@require_POST
+@login_required
+def spawn_challenge_instance(request, challenge_id):
+    challenge = get_object_or_404(Challenge, id=challenge_id)
+    team_membership = getattr(request.user, 'teammembership', None)
+
+    team = None
+    if team_membership:
+        team = team_membership.team
+    else:
+        team = getattr(request.user, 'teams', None)
+        team = team.first() if team else None
+
+    if not team:
+        return HttpResponse('<div class="text-red-500">Error: You must join a team.</div>')
+
+    try:
+        active_instance = DockerManagerService.spawn_instance(team, challenge)
+
+        html_string = """
+        <div class="mt-4 p-4 bg-green-900 border border-green-500 rounded text-center">
+            <p class="text-green-300 mb-2">Machine is UP and routable.</p>
+            <a href="http://{{ instance.traefik_subdomain }}" target="_blank" class="text-xl font-mono text-green-400 hover:text-green-200 underline">
+                http://{{ instance.traefik_subdomain }}
+            </a>
+            <p class="text-sm text-gray-400 mt-2">Dies automatically in {{ instance.expires_at|timeuntil }}</p>
+        </div>
+        """
+        django_engine = engines['django']
+        template = django_engine.from_string(html_string)
+        rendered_html = template.render({'instance': active_instance})
+        return HttpResponse(rendered_html)
+
+    except Exception as e:
+        logger.error(f"Failed to start challenge instance: {e}")
+        return HttpResponse(
+            f'<div class="p-3 bg-red-900/50 border border-red-700 text-red-200 rounded">Spawn failed: {str(e)}</div>',
+            status=503
+        )

@@ -1,0 +1,37 @@
+{% load static %}
+<div hx-get="{% url 'challenge_detail' challenge.id %}" hx-target="#challenge-modal-content" hx-swap="innerHTML"
+    @click="modalOpen = true"
+    class="bg-brand-surface border border-gray-700 hover:border-brand-accent p-6 rounded-xl cursor-pointer transition-all transform hover:-translate-y-1 shadow-md hover:shadow-brand-accent/20 flex flex-col justify-between group h-full">
+
+    <div>
+        <div class="flex justify-between items-start mb-4">
+            <h4 class="text-lg font-bold text-gray-100 group-hover:text-white transition-colors">{{ challenge.title }}
+            </h4>
+            <span
+                class="bg-gray-800 text-brand-accent text-xs font-mono font-bold px-2 py-1 rounded border border-gray-700">
+                ⭐ {{ challenge.base_points }} pts
+            </span>
+        </div>
+
+        <div class="text-sm text-gray-400 mb-4 line-clamp-2">
+            <!-- Briefly show if docker or not -->
+            {% if challenge.docker_image_tag %}
+            <span class="inline-flex items-center gap-1 text-xs text-blue-400 bg-blue-900/30 px-2 py-0.5 rounded mr-2">
+                🐳 Docker
+            </span>
+            {% endif %}
+
+            {% if challenge.is_tutorial %}
+            <span class="inline-flex items-center gap-1 text-xs text-green-400 bg-green-900/30 px-2 py-0.5 rounded">
+                🎓 Tutorial
+            </span>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- UI State logic (e.g. if solved) - This requires a custom template tag or passing solved IDs if we iterate, but for the PoC we can just let the modal show the solved state, OR we leave it visual. We'll add a simple click hint here. -->
+    <div class="text-xs font-mono text-gray-500 mt-auto flex items-center justify-between">
+        <span>Click to inspect payload</span>
+        <span class="group-hover:translate-x-1 transition-transform">-></span>
+    </div>
+</div>

@@ -1,40 +1,44 @@
 from django.urls import path
-from rest_framework_simplejwt.views import TokenRefreshView
-
-from core.views import (
-    RegisterView,
-    SecureTokenObtainPairView,
-    JoinTeamView,
-    SkillTreeView,
-    StartChallengeView,
-    SubmitFlagView,
-    LeaderboardView,
-    DashboardView,
-    health_ping,
-    challenge_detail,
-    test_outcome,
-)
+from django.contrib.auth import views as auth_views
+from core import views
 
 urlpatterns = [
-    # --- Authentication ---
-    path("auth/register/", RegisterView.as_view(), name="auth_register"),
-    path("auth/login/", SecureTokenObtainPairView.as_view(), name="auth_login"),
-    path("auth/refresh/", TokenRefreshView.as_view(), name="auth_refresh"),
-    # --- Teams ---
-    path("teams/join/", JoinTeamView.as_view(), name="team_join"),
-    # --- Data Fetching (Frontend Rendering) ---
-    path("challenges/tree/", SkillTreeView.as_view(), name="skill_tree"),
-    path("leaderboard/", LeaderboardView.as_view(), name="leaderboard"),
-    # --- Actions ---
-    path("challenges/start/", StartChallengeView.as_view(), name="challenge_start"),
-    path("submissions/", SubmitFlagView.as_view(), name="flag_submission"),
-    # --- Frontend Shell & Infra ---
-    path("dashboard/", DashboardView.as_view(), name="dashboard"),
-    path("health/ping/", health_ping, name="health_ping"),
-    path(
-        "challenges/view/<int:challenge_id>/", challenge_detail, name="challenge_detail"
-    ),
-    path(
-        "test-outcome/<int:challenge_id>/<str:status>/", test_outcome, name="test_outcome"
-    ),
+    # Landing / Redirect
+    path('', views.home, name='home'),
+    path('health/ping/', views.health_ping, name='health_ping'),
+    
+    # Auth
+    path('login/', auth_views.LoginView.as_view(template_name='auth/login.html'), name='login'),
+    path('logout/', auth_views.LogoutView.as_view(next_page='/login/'), name='logout'),
+    
+    # Dashboard & Skill Tree
+    path('dashboard/', views.dashboard, name='dashboard'),
+    
+    # Challenge Modal Details (HTMX)
+    path('challenge/<int:challenge_id>/', views.challenge_detail, name='challenge_detail'),
+    
+    # Leaderboard
+    path('leaderboard/', views.leaderboard, name='leaderboard'),
+    
+    # Teams
+    path('team/', views.team_dashboard, name='team_dashboard'),
+    path('team/create/', views.create_team_action, name='create_team_action'),
+    path('team/join/', views.join_team_action, name='join_team_action'),
+    
+    # --- Backend Interceptor Actions ---
+    # We keep the core mechanics available, simplified
+    path('challenge/<int:challenge_id>/spawn/', views.spawn_challenge_instance, name='spawn_instance'),
+    path('challenge/<int:challenge_id>/submit/', views.submit_flag, name='submit_flag'),
+    path('challenge/<int:challenge_id>/writeup/', views.submit_writeup, name='submit_writeup'),
+    path('challenge/<int:challenge_id>/sos/', views.create_sos_ticket, name='create_sos_ticket'),
+    
+    # --- Live Map & Admin Controls ---
+    path('live/', views.live_cyber_map, name='live_cyber_map'),
+    path('live/data/', views.live_cyber_map_data, name='live_cyber_map_data'),
+    path('admin/toggle-pause/', views.toggle_ctf_pause, name='toggle_ctf_pause'),
+
+    # --- CTF Builder Engine ---
+    path('builder/', views.builder_dashboard, name='builder_dashboard'),
+    path('builder/template/<int:template_id>/', views.get_template_form, name='get_template_form'),
+    path('builder/submit/', views.submit_built_challenge, name='submit_built_challenge'),
 ]

@@ -1,97 +1,158 @@
-<div class="challenge-modal p-6 bg-slate-800 rounded-lg shadow-xl" style="max-width: 600px; margin: 0 auto; color: white;">
-    <h2 class="text-2xl font-bold mb-2" style="color: var(--accent-primary);">{{ challenge.title }}</h2>
-    <div class="flex justify-between items-center mb-4">
-        <span class="text-sm text-gray-400">Category: {{ challenge.category.name }}</span>
-        <span class="px-3 py-1 rounded bg-blue-900 text-blue-200 font-semibold">{{ current_points }} pts</span>
-    </div>
+<div class="p-8 relative">
+    <!-- Close Button -->
+    <button @click="modalOpen = false"
+        class="absolute top-4 right-4 text-gray-500 hover:text-white bg-gray-800 hover:bg-gray-700 rounded-full w-8 h-8 flex relative mt-2 mr-2 items-center justify-center transition-colors">
+        ✕
+    </button>
 
-    <div class="prose prose-invert mb-6">
-        <p>{{ challenge.description }}</p>
-    </div>
+    <div class="mb-8 pr-12">
+        <h2 class="text-3xl font-black text-white flex items-center gap-3">
+            {{ challenge.title }}
+            {% if is_solved %}
+            <span
+                class="bg-brand-success/20 text-brand-success text-sm px-3 py-1 rounded-full border border-brand-success/50 flex items-center gap-1">
+                ✅ SOLVED
+            </span>
+            {% endif %}
+        </h2>
 
-    {% if is_solved %}
-        <div class="p-4 mb-6 rounded bg-green-900 border border-green-700 text-center">
-            <span class="text-xl">✅</span>
-            <h3 class="font-bold text-green-200 mt-2">Challenge Solved!</h3>
-            <p class="text-sm text-green-300">Your team has already captured this flag.</p>
+        <div class="flex items-center gap-4 mt-3 text-sm text-gray-400 font-mono">
+            <span>Category: {{ challenge.category.name }}</span> •
+            <span class="text-brand-accent">Base Pts: {{ challenge.base_points }}</span> •
+            <span class="text-yellow-500">Dynamic Pts: {{ current_points }}</span>
         </div>
-    {% else %}
+    </div>
 
-        {# --- Logic A: Docker Sibling Architecture --- #}
-        {% if challenge.docker_image_tag %}
-            <div class="p-4 mb-6 rounded border border-slate-600 bg-slate-900">
-                <h3 class="font-semibold mb-2 flex items-center gap-2">
-                    🖥️ Interactive Target
-                </h3>
-                
-                {% if active_instance %}
-                    <div class="flex flex-col gap-3" 
-                         x-data="{ 
-                             expiresAt: new Date('{{ active_instance.expires_at.isoformat }}'),
-                             timeLeft: '',
-                             updateTimer() {
-                                 const now = new Date();
-                                 const diff = this.expiresAt - now;
-                                 if (diff <= 0) {
-                                     this.timeLeft = 'Expired (Sweeper in progress...)';
-                                     return;
-                                 }
-                                 const m = Math.floor(diff / 60000);
-                                 const s = Math.floor((diff % 60000) / 1000);
-                                 this.timeLeft = `${m}m ${s}s`;
-                             }
-                         }" 
-                         x-init="updateTimer(); setInterval(() => updateTimer(), 1000)">
-                        
-                        <div class="p-3 bg-black rounded font-mono text-sm break-all text-green-400 flex justify-between items-center">
-                            <span>http://{{ active_instance.traefik_subdomain }}</span>
-                            <a href="http://{{ active_instance.traefik_subdomain }}" target="_blank" class="px-2 py-1 bg-slate-700 hover:bg-slate-600 rounded text-xs text-white no-underline">Open ↗</a>
-                        </div>
-                        
-                        <div class="text-xs text-amber-500 flex items-center justify-between">
-                            <span>Time remaining before auto-kill:</span>
-                            <span class="font-mono font-bold" x-text="timeLeft"></span>
-                        </div>
-                    </div>
-                {% else %}
-                    <p class="text-sm text-gray-400 mb-4">This challenge requires an isolated container. Spinning one up takes about 5 seconds.</p>
-                    <form hx-post="{% url 'challenge_start' %}" 
-                          hx-target="#challenge-modal-content" 
-                          hx-swap="innerHTML">
-                        <input type="hidden" name="challenge_id" value="{{ challenge.id }}">
-                        <button type="submit" 
-                                class="w-full py-2 bg-blue-600 hover:bg-blue-500 rounded font-semibold transition-colors flex justify-center items-center gap-2"
-                                onclick="this.innerHTML='<span class=\'animate-spin inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full\'></span> Provisioning...'">
-                            ▶️ Start Machine
-                        </button>
-                    </form>
-                {% endif %}
+    <div class="prose prose-invert prose-blue max-w-none text-gray-300 mb-8 pb-8 border-b border-gray-700">
+        {{ challenge.description|safe }}
+    </div>
+
+    <!-- FORENSICS ATTACHMENT -->
+    {% if challenge.attachment %}
+    <div class="mb-8 bg-gray-900 border border-gray-700 rounded-lg p-5">
+        <h3 class="text-lg font-bold text-white mb-3 flex items-center gap-2">
+            📎 Evidence File
+        </h3>
+        <a href="{{ challenge.attachment.url }}" download
+           class="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-lg font-bold transition shadow-lg">
+            <span>⬇️</span> Download Attached File
+        </a>
+        <p class="text-xs text-gray-500 mt-2 font-mono">Analyze this file to extract the flag.</p>
+    </div>
+    {% endif %}
+
+    <!-- DOCKER INTERACTION -->
+    {% if challenge.docker_image_tag %}
+    <div class="mb-8 bg-gray-900 border border-gray-700 rounded-lg p-5">
+        <h3 class="text-lg font-bold text-white mb-2 flex items-center gap-2">🐳 Dynamic Mission Instance</h3>
+
+        {% if active_instance %}
+        <div class="bg-blue-900/20 border border-blue-800/50 p-4 rounded text-blue-200">
+            <p class="mb-2">Machine is UP and routable.</p>
+            <div class="flex flex-col gap-2">
+                <code
+                    class="bg-black/50 p-2 rounded block break-all text-brand-accent select-all">http://{{ active_instance.traefik_subdomain }}</code>
             </div>
+            <p class="text-xs text-gray-400 mt-3 font-mono">Instance dies automatically in {{
+                active_instance.expires_at|timeuntil }}</p>
+        </div>
+        {% else %}
+        <div class="mt-4">
+            <button hx-post="{% url 'spawn_instance' challenge.id %}" hx-include="[name='csrfmiddlewaretoken']"
+                hx-swap="outerHTML"
+                class="bg-gray-800 hover:bg-gray-700 border border-gray-600 text-white px-4 py-2 rounded transition font-bold shadow-md w-full">
+                Start Instance
+            </button>
+            <div class="mt-2 text-xs text-gray-500 text-center">Spawns an isolated Linux container on demand.</div>
+        </div>
         {% endif %}
+    </div>
+    {% endif %}
 
-        {# --- Logic B: Flag Submission Engine --- #}
-        <div class="p-4 rounded border border-slate-600 bg-slate-700/30">
-            <h3 class="font-semibold mb-3">Submit Flag</h3>
-            
-            <form hx-post="{% url 'flag_submission' %}" 
-                  hx-target="#submission-result" 
-                  hx-swap="innerHTML"
-                  class="flex gap-2">
-                <input type="hidden" name="challenge_id" value="{{ challenge.id }}">
-                <input type="text" 
-                       name="submitted_flag" 
-                       placeholder="CTFacile{...}" 
-                       required
-                       class="flex-1 px-3 py-2 bg-slate-900 border border-slate-600 rounded focus:border-blue-500 focus:outline-none text-white font-mono placeholder:text-slate-500">
-                <button type="submit" class="px-4 py-2 bg-green-600 hover:bg-green-500 rounded font-semibold transition-colors">
-                    Submit
+    <!-- SUBMISSION -->
+    <div>
+        <h3 class="text-lg font-bold text-white mb-4">Flag Protocol</h3>
+        <form hx-post="{% url 'submit_flag' challenge.id %}" hx-target="#flag-result" hx-swap="innerHTML"
+            class="flex gap-2"
+            x-data="{ savedFlag: localStorage.getItem('draft_flag_chall_{{ challenge.id }}') || '' }"
+            x-init="$watch('savedFlag', value => localStorage.setItem('draft_flag_chall_{{ challenge.id }}', value))"
+            @submit="localStorage.removeItem('draft_flag_chall_{{ challenge.id }}')">
+
+            <!-- Global CSRF injected via htmx_config.js, or we explicitly declare it: -->
+            {% csrf_token %}
+
+            <input type="text" name="flag" placeholder="CTF{...}" required
+                x-model="savedFlag"
+                class="flex-grow bg-brand-base border border-gray-700 rounded px-4 py-3 text-white focus:outline-none focus:border-brand-accent focus:ring-1 focus:ring-brand-accent transition font-mono">
+            <button type="submit" {% if is_solved %}disabled{% endif %}
+                class="bg-brand-success hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed text-white px-6 py-3 rounded font-bold transition">
+                Submit
+            </button>
+        </form>
+
+        <div id="flag-result" class="mt-4"></div>
+    </div>
+
+    <!-- POST-SOLVE METHODOLOGY PROTOCOL -->
+    {% if is_solved %}
+    <div class="mt-8 pt-8 border-t border-gray-700">
+        <h3 class="text-lg font-bold text-white mb-4 flex items-center gap-2">
+            <span class="text-purple-400">📝</span> Methodology Report
+        </h3>
+        <p class="text-gray-400 text-sm mb-4">Required for academic grading. Detail your exact intrusion path.</p>
+        
+        <form hx-post="{% url 'submit_writeup' challenge.id %}" hx-target="#writeup-result" hx-swap="innerHTML">
+            {% csrf_token %}
+            <div x-data="{ draftWriteup: localStorage.getItem('writeup_chall_{{ challenge.id }}') || '' }"
+                 x-init="$watch('draftWriteup', value => localStorage.setItem('writeup_chall_{{ challenge.id }}', value))"
+                 class="mb-4">
+                <textarea name="writeup_content" 
+                          x-model="draftWriteup" 
+                          rows="6" 
+                          placeholder="Markdown Supported: \n1. First I mapped the ports...\n2. Next, I exploited..."
+                          class="w-full bg-gray-900 border border-gray-700 text-green-400 font-mono p-4 rounded focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition"></textarea>
+                
+                <button type="submit" 
+                        @click="localStorage.removeItem('writeup_chall_{{ challenge.id }}')" 
+                        class="w-full mt-3 bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded font-bold transition">
+                    Submit Write-Up
+                </button>
+            </div>
+        </form>
+        
+        <div id="writeup-result" class="mt-4"></div>
+    </div>
+    {% endif %}
+
+    <!-- SOS BEACON PROTOCOL -->
+    <div class="mt-8 pt-8 border-t border-gray-700" x-data="{ showSosForm: false }">
+        <div class="flex items-center justify-between">
+            <h3 class="text-lg font-bold text-white flex items-center gap-2">
+                <span class="text-yellow-500">🚨</span> Support Uplink
+            </h3>
+            <button @click="showSosForm = !showSosForm" 
+                    class="text-sm bg-gray-800 hover:bg-gray-700 border border-gray-600 text-gray-300 px-3 py-1 rounded transition">
+                Need Help?
+            </button>
+        </div>
+        
+        <div x-show="showSosForm" x-transition.opacity class="mt-4">
+            <p class="text-gray-400 text-sm mb-4">Request mentor intervention. Use sparingly to avoid channel saturation.</p>
+            <form hx-post="{% url 'create_sos_ticket' challenge.id %}" hx-target="#sos-result" hx-swap="innerHTML">
+                {% csrf_token %}
+                <textarea name="issue_description" 
+                          rows="4" 
+                          placeholder="Explain your approach, what scripts you ran, and where you are stuck..."
+                          required
+                          class="w-full bg-gray-900 border border-gray-700 text-yellow-500 font-mono p-4 rounded focus:outline-none focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500 transition mb-3"></textarea>
+                
+                <button type="submit" 
+                        class="w-full bg-yellow-600 hover:bg-yellow-700 text-white px-6 py-2 rounded font-bold transition shadow-lg border border-yellow-500">
+                    Send SOS Beacon
                 </button>
             </form>
-            
-            <div id="submission-result" class="mt-3 text-sm">
-                <!-- HTMX replaces this block on success/failure response -->
-            </div>
+            <div id="sos-result" class="mt-4"></div>
         </div>
+    </div>
 
-    {% endif %}
 </div>

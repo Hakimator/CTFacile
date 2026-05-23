@@ -1,100 +1,61 @@
 {% extends "core/base.html" %}
 
 {% block content %}
-<style>
-    .grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-        gap: 1.5rem;
-        margin-top: 2rem;
-    }
-
-    .card {
-        background: var(--surface-color);
-        border: 1px solid var(--border-color);
-        border-radius: 8px;
-        padding: 1.5rem;
-        transition: transform 0.2s;
-    }
-
-    .card:hover {
-        transform: translateY(-2px);
-    }
-
-    .card h3 {
-        color: var(--accent-primary);
-        margin-bottom: 0.5rem;
-    }
-
-    /* Offline LocalStorage Persistence Styling */
-    .writeup-box {
-        margin-top: 3rem;
-        background: var(--surface-color);
-        border: 1px solid var(--border-color);
-        border-radius: 8px;
-        padding: 1.5rem;
-    }
-
-    textarea {
-        width: 100%;
-        min-height: 150px;
-        background: var(--bg-color);
-        border: 1px solid var(--border-color);
-        color: var(--text-primary);
-        padding: 1rem;
-        border-radius: 4px;
-        margin-top: 1rem;
-        resize: vertical;
-    }
-
-    textarea:focus {
-        outline: 2px solid var(--accent-primary);
-        border-color: transparent;
-    }
-</style>
-
-<div class="header">
-    <h1>CTFacile Interactive Dashboard</h1>
-    <p style="color: var(--text-secondary); margin-top: 0.5rem;">Select a challenge to begin</p>
+<div class="mb-10">
+    <h2 class="text-4xl font-black mb-2">Skill Tree</h2>
+    <p class="text-gray-400">Select challenges across the board to level up your team's score.</p>
 </div>
 
-<div class="grid">
-    {% for category in categories %}
-        <div class="card">
-            <h3>{{ category.name }}</h3>
-            <p style="color: var(--text-secondary); margin-bottom: 1rem;">{{ category.description }}</p>
-            
-            <div style="display: flex; flex-direction: column; gap: 0.5rem;">
-                {% for challenge in category.challenges.all %}
-                    <button 
-                        @click="currentChallenge = {{ challenge.id }}; modalOpen = true"
-                        style="width: 100%; text-align: left; background: var(--bg-color); border: 1px solid var(--border-color);"
-                    >
-                        {{ challenge.title }} 
-                        <span style="float: right; color: var(--accent-success);">{{ challenge.base_points }} pts</span>
-                    </button>
-                    {% include 'partials/test_buttons.html' %}
-                {% empty %}
-                    <span style="color: var(--text-secondary); font-size: 0.875rem;">No challenges active.</span>
-                {% endfor %}
-            </div>
+<div class="space-y-12">
+    {% for category_name, challenges in tree_data.items %}
+    <section>
+        <div class="border-b border-gray-700 pb-2 mb-6 pointer-events-none">
+            <h3 class="text-2xl font-bold text-white">{{ category_name }}</h3>
         </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {% for challenge in challenges %}
+                {% if challenge.state == "SOLVED" %}
+                <!-- SOLVED CARD -->
+                <div hx-get="{% url 'challenge_detail' challenge.id %}" hx-target="#challenge-modal-content" @click="modalOpen = true"
+                    class="bg-green-900/30 border border-green-500 rounded-xl p-6 cursor-pointer hover:bg-green-800/40 transition group relative overflow-hidden flex flex-col justify-between h-full">
+                    <div class="absolute top-3 right-3 text-green-400 font-black text-2xl">✓</div>
+                    <div>
+                        <h4 class="text-lg font-bold text-green-300 mb-2 truncate group-hover:text-white transition">{{ challenge.title }}</h4>
+                        <div class="text-xs text-green-500 font-mono">{{ challenge.base_points }} PTS</div>
+                    </div>
+                </div>
+                
+                {% elif challenge.state == "UNLOCKED" %}
+                <!-- UNLOCKED CARD -->
+                <div hx-get="{% url 'challenge_detail' challenge.id %}" hx-target="#challenge-modal-content" @click="modalOpen = true"
+                    class="bg-gray-800 border border-gray-600 rounded-xl p-6 cursor-pointer hover:border-brand-accent transition group relative overflow-hidden hover:shadow-[0_0_15px_rgba(59,130,246,0.3)] flex flex-col justify-between h-full">
+                    <div>
+                        <h4 class="text-lg font-bold text-white mb-2 truncate group-hover:text-brand-accent transition">{{ challenge.title }}</h4>
+                        <div class="text-xs text-brand-accent font-mono">{{ challenge.base_points }} PTS</div>
+                    </div>
+                </div>
+                
+                {% else %}
+                <!-- LOCKED CARD -->
+                <div class="bg-gray-900/50 border border-gray-800 rounded-xl p-6 relative overflow-hidden opacity-50 flex flex-col justify-between h-full pointer-events-none">
+                    <div class="absolute inset-0 flex items-center justify-center opacity-20">
+                        <span class="text-6xl">🔒</span>
+                    </div>
+                    <div>
+                        <h4 class="text-lg font-bold text-gray-500 mb-2 truncate">{{ challenge.title }}</h4>
+                        <div class="text-xs text-gray-600 font-mono">ENCRYPTED</div>
+                    </div>
+                </div>
+                {% endif %}
+                
+            {% empty %}
+            <div class="col-span-full text-center text-gray-600 py-8 border border-dashed border-gray-700 rounded-xl">
+                No challenges initialized in this sector.
+            </div>
+            {% endfor %}
+        </div>
+    </section>
     {% endfor %}
 </div>
-
-<!-- Alpine.JS LocalStorage Persistence for Write-ups -->
-<div class="writeup-box" x-data="{ draftText: '' }" x-init="draftText = localStorage.getItem('writeup_draft') || ''">
-    <h3>📝 Personal Write-Up Draft</h3>
-    <p style="color: var(--text-secondary); font-size: 0.875rem;">
-        Your notes are automatically saved to your browser on every keystroke. Impervious to network drops.
-    </p>
-    
-    <!-- The crucial x-model & @input combination for offline caching -->
-    <textarea 
-        placeholder="Start writing your methodology here..."
-        x-model="draftText"
-        @input="localStorage.setItem('writeup_draft', draftText)"
-    ></textarea>
-</div>
-
 {% endblock %}

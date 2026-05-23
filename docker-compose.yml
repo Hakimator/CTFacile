@@ -1,15 +1,36 @@
+version: "3.9"
+
+# =============================================================================
+# CTFacile — Full Stack Compose
+# =============================================================================
+# Services:
+#   traefik      — reverse proxy, auto-routes challenge containers via labels
+#   db           — PostgreSQL persistent store
+#   redis        — broker + cache + telemetry
+#   web          — Django / gunicorn (stateless, scalable)
+#   celery       — async task worker (flag events, docker operations)
+#   celery-beat  — periodic scheduler (sweeps expired containers every minute)
+#
+# Networks:
+#   traefik_public  — shared with spawned challenge containers so Traefik can
+#                     see and route them without exposing their ports directly
+#   backend         — internal service mesh (web <-> db <-> redis)
+# =============================================================================
+
 services:
-  # ==========================================
-  # 1. Reverse Proxy (Traefik)
-  # ==========================================
+
+  # ---------------------------------------------------------------------------
+  # Traefik — Reverse Proxy & Dynamic Router
+  # ---------------------------------------------------------------------------
   traefik:
-    image: traefik:v3.0
+    image: traefik:v2.11
     container_name: ctfacile_traefik
+    restart: unless-stopped
     command:
-      - "--providers.docker.endpoint=unix:///var/run/docker.sock"
       - "--api.insecure=true"
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.network=ctfacile_traefik_public"
       - "--entrypoints.web.address=:80"
       - "--entrypoints.websecure.address=:443"
       - "--log.level=INFO"
@@ -18,137 +39,159 @@ services:
       - "443:443"
       - "8080:8080"
     volumes:
-      # WINDOWS FIX: Maps the Windows Docker Engine pipe to the Linux path
-      - //./pipe/docker_engine:/var/run/docker.sock
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     networks:
       - traefik_public
-    restart: unless-stopped
+      - backend
 
-  # ==========================================
-  # 2. Stateful Data & Caching
-  # ==========================================
+  # ---------------------------------------------------------------------------
+  # PostgreSQL — Persistent Relational Store (Strict 3NF)
+  # ---------------------------------------------------------------------------
   db:
-    image: postgres:15-alpine
+    image: postgres:16-alpine
     container_name: ctfacile_db
-    environment:
-      POSTGRES_USER: ctfacile
-      POSTGRES_PASSWORD: ctfacilepassword
-      POSTGRES_DB: ctfacile_db
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    networks:
-      - internal
     restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ctfacile}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ctfacilepassword}
+      POSTGRES_DB: ${POSTGRES_DB:-ctfacile_db}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ctfacile} -d ${POSTGRES_DB:-ctfacile_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
+  # ---------------------------------------------------------------------------
+  # Redis — Broker + Cache + Telemetry Engine
+  # ---------------------------------------------------------------------------
   redis:
     image: redis:7-alpine
     container_name: ctfacile_redis
-    command: redis-server --save 60 1 --loglevel warning
-    volumes:
-      - redisdata:/data
-    networks:
-      - internal
     restart: unless-stopped
-
-  # ==========================================
-  # 3. Object Storage (Official MinIO)
-  # ==========================================
-  minio:
-    image: minio/minio:RELEASE.2024-01-31T20-20-33Z
-    container_name: ctfacile_minio
-    command: server /data --console-address ":9001"
-    environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadminpassword
-    ports:
-      - "9000:9000"
-      - "9001:9001"
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
     volumes:
-      - miniodata:/data
+      - redis_data:/data
     networks:
-      - internal
-    restart: unless-stopped
+      - backend
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
-  # ==========================================
-  # 4. Django Application 
-  # ==========================================
+  # ---------------------------------------------------------------------------
+  # Django Web — Stateless Application Server
+  # ---------------------------------------------------------------------------
   web:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: ctfacile_web
-    command: python manage.py runserver 0.0.0.0:8000
-    volumes:
-      - .:/app
-      - //./pipe/docker_engine:/var/run/docker.sock
-    # ADD THIS SECTION BELOW
-    ports:
-      - "8000:8000" 
+    restart: unless-stopped
+    command: |
+      sh -c "python manage.py migrate --noinput && python manage.py collectstatic --noinput && gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 4 --timeout 120 --access-logfile -"
     environment:
-      - DEBUG=1
-      - DATABASE_URL=postgres://ctfacile:ctfacilepassword@db:5432/ctfacile_db
-      - REDIS_URL=redis://redis:6379/0
-      - MINIO_ENDPOINT=minio:9000
-      - MINIO_ACCESS_KEY=minioadmin
-      - MINIO_SECRET_KEY=minioadminpassword
+      SECRET_KEY: ${SECRET_KEY}
+      DEBUG: ${DEBUG:-0}
+      DATABASE_URL: postgres://${POSTGRES_USER:-ctfacile}:${POSTGRES_PASSWORD:-ctfacilepassword}@db:5432/${POSTGRES_DB:-ctfacile_db}
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1,ctfacile.local}
+      CTF_HOST_IP: ${CTF_HOST_IP:-127.0.0.1}
+      TRAEFIK_NETWORK_NAME: ctfacile_traefik_public
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - static_files:/app/staticfiles
+      - media_files:/app/media
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - backend
+      - traefik_public
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.web.rule=Host(`ctfacile.local`)"
+      - "traefik.http.routers.web.rule=Host(`${CTF_DOMAIN:-ctfacile.local}`)"
       - "traefik.http.routers.web.entrypoints=web"
       - "traefik.http.services.web.loadbalancer.server.port=8000"
-    networks:
-      - internal
-      - traefik_public
-    depends_on:
-      - db
-      - redis
-      - minio
-    restart: on-failure
 
-  # ==========================================
-  # 5. Background Workers & Celery
-  # ==========================================
-  celery_worker:
-    build: .
-    container_name: ctfacile_celery_worker
-    command: celery -A config worker -l INFO
-    volumes:
-      - .:/app
-      - //./pipe/docker_engine:/var/run/docker.sock
+  # ---------------------------------------------------------------------------
+  # Celery Worker — Async Task Executor
+  # ---------------------------------------------------------------------------
+  celery:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ctfacile_celery
+    restart: unless-stopped
+    command: celery -A config worker --loglevel=info --concurrency=4
     environment:
-      - DATABASE_URL=postgres://ctfacile:ctfacilepassword@db:5432/ctfacile_db
-      - REDIS_URL=redis://redis:6379/0
-      - CELERY_BROKER_URL=redis://redis:6379/1
-    networks:
-      - internal
+      SECRET_KEY: ${SECRET_KEY}
+      DEBUG: ${DEBUG:-0}
+      DATABASE_URL: postgres://${POSTGRES_USER:-ctfacile}:${POSTGRES_PASSWORD:-ctfacilepassword}@db:5432/${POSTGRES_DB:-ctfacile_db}
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CTF_HOST_IP: ${CTF_HOST_IP:-127.0.0.1}
+      TRAEFIK_NETWORK_NAME: ctfacile_traefik_public
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
-      - redis
-      - db
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - backend
 
-  celery_beat:
-    build: .
+  # ---------------------------------------------------------------------------
+  # Celery Beat — Periodic Scheduler ("Cockroach Protocol" sweeper)
+  # ---------------------------------------------------------------------------
+  celery-beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: ctfacile_celery_beat
-    command: celery -A config beat -l INFO
-    volumes:
-      - .:/app
+    restart: unless-stopped
+    command: celery -A config beat --loglevel=info --scheduler celery.beat.PersistentScheduler
     environment:
-      - DATABASE_URL=postgres://ctfacile:ctfacilepassword@db:5432/ctfacile_db
-      - REDIS_URL=redis://redis:6379/0
-      - CELERY_BROKER_URL=redis://redis:6379/1
-    networks:
-      - internal
+      SECRET_KEY: ${SECRET_KEY}
+      DEBUG: ${DEBUG:-0}
+      DATABASE_URL: postgres://${POSTGRES_USER:-ctfacile}:${POSTGRES_PASSWORD:-ctfacilepassword}@db:5432/${POSTGRES_DB:-ctfacile_db}
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
     depends_on:
-      - redis
-      - db
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - backend
 
-# ==========================================
-# Networks & Volumes
-# ==========================================
+# =============================================================================
+# Networks
+# =============================================================================
 networks:
-  internal:
-    driver: bridge
+  # Shared with dynamically-spawned challenge containers.
+  # Name must match DEFAULT_TRAEFIK_NETWORK in constants.py and TRAEFIK_NETWORK_NAME env var.
   traefik_public:
+    name: ctfacile_traefik_public
     driver: bridge
 
+  # Internal service mesh — not reachable from outside.
+  backend:
+    driver: bridge
+
+# =============================================================================
+# Volumes
+# =============================================================================
 volumes:
-  pgdata:
-  redisdata:
-  miniodata:
+  postgres_data:
+  redis_data:
+  static_files:
+  media_files:

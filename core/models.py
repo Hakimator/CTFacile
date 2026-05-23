@@ -97,6 +97,52 @@ class Category(models.Model):
         return self.name
 
 
+class ChallengeTemplate(models.Model):
+    """Elementary Brick — a reusable template that instructors use to generate challenges."""
+    name = models.CharField(
+        max_length=constants.MAX_CHAR_LENGTH_MEDIUM,
+        help_text="e.g. 'Basic SQL Injection', 'XSS Reflected'"
+    )
+    category = models.ForeignKey(
+        Category, on_delete=models.CASCADE, related_name="templates"
+    )
+    description = models.TextField(
+        help_text="Explains the pedagogical goal and vulnerability covered by this brick."
+    )
+    base_docker_image = models.CharField(
+        max_length=constants.MAX_CHAR_LENGTH_LONG,
+        help_text="Docker image shipped with the brick (e.g. vulnerable-nginx-php)"
+    )
+    vulnerability_type = models.CharField(
+        max_length=constants.MAX_CHAR_LENGTH_SHORT,
+        help_text="Canonical tag: sqli, xss, lfi, rce, idor, etc."
+    )
+
+    def __str__(self):
+        return f"[{self.vulnerability_type.upper()}] {self.name}"
+
+
+class TemplateVariable(models.Model):
+    """Defines a configurable parameter that an instructor can set when instantiating a template."""
+    template = models.ForeignKey(
+        ChallengeTemplate, on_delete=models.CASCADE, related_name="variables"
+    )
+    key_name = models.CharField(
+        max_length=constants.MAX_CHAR_LENGTH_MEDIUM,
+        help_text="Environment variable key injected into the container (e.g. FLAG_FORMAT, DB_PASSWORD)"
+    )
+    default_value = models.CharField(
+        max_length=constants.MAX_CHAR_LENGTH_LONG, blank=True, default=""
+    )
+    is_required = models.BooleanField(default=False)
+
+    class Meta:
+        unique_together = ("template", "key_name")
+
+    def __str__(self):
+        return f"{self.template.name} :: {self.key_name}"
+
+
 class Challenge(models.Model):
     session = models.ForeignKey(
         CTFSession, on_delete=models.CASCADE, related_name="challenges"
@@ -112,6 +158,32 @@ class Challenge(models.Model):
     is_entry_node = models.BooleanField(default=False)
     docker_image_tag = models.CharField(
         max_length=constants.MAX_CHAR_LENGTH_LONG, null=True, blank=True
+    )
+    challenge_type = models.CharField(
+        max_length=50,
+        choices=[('STATIC', 'Static'), ('CONTAINER', 'Containerized')],
+        default='STATIC'
+    )
+    internal_port = models.IntegerField(
+        default=80,
+        help_text="The internal port the container listens on (e.g., 80 for Nginx, 5000 for Flask)"
+    )
+    # --- CTF Builder fields ---
+    template = models.ForeignKey(
+        ChallengeTemplate,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="challenges",
+        help_text="Optional: the Elementary Brick this challenge was generated from."
+    )
+    custom_parameters = models.JSONField(
+        default=dict, blank=True,
+        help_text='Instructor-configured values for template variables, e.g. {"FLAG": "FLAG{custom123}"}'
+    )
+    attachment = models.FileField(
+        upload_to='challenges/attachments/',
+        null=True, blank=True,
+        help_text="Optional file attachment (e.g., forensics evidence, pcap, stego image)"
     )
 
     def __str__(self):

@@ -8,9 +8,9 @@ logger = logging.getLogger(__name__)
 
 
 @shared_task
-def cleanup_expired_containers():
+def cleanup_expired_instances():
     """
-    Periodic task designed to be run by Celery Beat every X minutes.
+    Periodic task designed to be run by Celery Beat automatically.
     Queries the database for ActiveInstances whose expires_at time has passed,
     and uses the DockerManagerService to forcefully tear them down.
     """
@@ -30,7 +30,7 @@ def cleanup_expired_containers():
     for instance in expired_instances:
         try:
             # Tell DockerManager to kill and delete the record
-            DockerManagerService.stop_challenge_instance(instance)
+            DockerManagerService.kill_instance(instance)
             death_toll += 1
         except Exception as e:
             # CRITICAL: We catch all exceptions here so a single rogue container

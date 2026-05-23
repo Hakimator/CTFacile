@@ -1,0 +1,27 @@
+{% extends "core/base.html" %}
+
+{% block content %}
+<div class="mb-8 flex justify-between items-center">
+    <div>
+        <h2 class="text-4xl font-black mb-2 text-brand-accent">Live Cyber-Map</h2>
+        <p class="text-gray-400">Classroom Projector Feed - Auto-refreshing via HTMX polling.</p>
+    </div>
+    
+    {% if request.user.is_staff or request.user.role == 'ADMIN' %}
+    <div>
+        <button hx-post="{% url 'toggle_ctf_pause' %}" hx-swap="outerHTML" 
+                class="{% if is_paused %}bg-green-600 hover:bg-green-700{% else %}bg-red-600 hover:bg-red-700{% endif %} text-white px-4 py-2 rounded font-bold transition shadow-[0_0_15px_rgba(220,38,38,0.5)]">
+            {% if is_paused %}Resume CTF{% else %}Pause CTF{% endif %}
+        </button>
+    </div>
+    {% endif %}
+</div>
+
+<!-- This container polls the server every 5 seconds and swaps the inner HTML -->
+<div hx-get="{% url 'live_cyber_map_data' %}" hx-trigger="every 5s" hx-swap="innerHTML">
+    <!-- Initial Loading State -->
+    <div class="flex justify-center items-center h-64 text-brand-accent animate-pulse text-2xl font-mono">
+        Establishing Link to Telemetry Feed...
+    </div>
+</div>
+{% endblock %}

@@ -6,7 +6,9 @@ psycopg2-binary
 redis
 django-redis
 celery
+celery[redis]
 docker
 django-environ
 django-cors-headers
 django-htmx
+gunicorn

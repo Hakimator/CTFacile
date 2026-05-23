@@ -1,0 +1,51 @@
+{% extends "core/base.html" %}
+
+{% block content %}
+<div class="mb-8">
+    <h2 class="text-4xl font-black text-brand-accent mb-1">CTF Builder Engine</h2>
+    <p class="text-gray-400 font-mono text-sm">Select an Elementary Brick to configure a new challenge for your session.</p>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+
+    <!-- LEFT COLUMN: Template Selector -->
+    <div class="lg:col-span-1 space-y-3">
+        <h3 class="text-xs uppercase tracking-widest text-gray-500 font-bold mb-4 flex items-center gap-2">
+            <span class="text-yellow-500">🧱</span> Elementary Bricks
+        </h3>
+
+        {% for tmpl in templates %}
+        <button
+            hx-get="{% url 'get_template_form' tmpl.id %}"
+            hx-target="#builder-canvas"
+            hx-swap="innerHTML"
+            class="w-full text-left bg-gray-900 hover:bg-gray-800 border border-gray-700 hover:border-brand-accent rounded-xl p-4 transition-all group"
+        >
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-white font-bold group-hover:text-brand-accent transition">{{ tmpl.name }}</p>
+                    <p class="text-xs text-gray-500 font-mono mt-1">{{ tmpl.vulnerability_type|upper }}</p>
+                </div>
+                <span class="text-gray-600 group-hover:text-brand-accent transition text-xl">→</span>
+            </div>
+        </button>
+        {% empty %}
+        <div class="p-6 text-center text-gray-500 italic border border-dashed border-gray-700 rounded-xl">
+            No templates available yet.<br>Seed the database first.
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- RIGHT COLUMN: Dynamic Builder Canvas -->
+    <div class="lg:col-span-2">
+        <div id="builder-canvas"
+             class="bg-gray-900 border border-gray-700 rounded-2xl p-8 min-h-[500px] flex items-center justify-center">
+            <div class="text-center space-y-3">
+                <p class="text-5xl">🔧</p>
+                <p class="text-gray-400 font-mono">Select a vulnerability template to configure&hellip;</p>
+            </div>
+        </div>
+    </div>
+
+</div>
+{% endblock %}

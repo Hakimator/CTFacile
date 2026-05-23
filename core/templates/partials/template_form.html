@@ -1,0 +1,101 @@
+<div class="space-y-6">
+    <!-- Header -->
+    <div class="border-b border-gray-700 pb-4">
+        <h3 class="text-2xl font-black text-white flex items-center gap-3">
+            <span class="text-yellow-500">🧱</span> {{ template.name }}
+        </h3>
+        <p class="text-gray-400 text-sm mt-2">{{ template.description }}</p>
+        <div class="flex gap-3 mt-3">
+            <span class="text-xs bg-brand-accent/20 text-brand-accent px-2 py-1 rounded font-mono">{{ template.vulnerability_type|upper }}</span>
+            <span class="text-xs bg-gray-800 text-gray-400 px-2 py-1 rounded font-mono">{{ template.base_docker_image }}</span>
+        </div>
+    </div>
+
+    <!-- Builder Form -->
+    <form hx-post="{% url 'submit_built_challenge' %}" hx-target="#builder-result" hx-swap="innerHTML" class="space-y-5">
+        {% csrf_token %}
+        <input type="hidden" name="template_id" value="{{ template.id }}">
+        <input type="hidden" name="category_id" value="{{ template.category.id }}">
+
+        <!-- Core Challenge Fields: Title + Points -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+                <label class="block text-xs uppercase tracking-wider text-gray-400 mb-2 font-mono">Challenge Title</label>
+                <input type="text" name="title" required placeholder="e.g. WebSec Lab 3: Blind SQLi"
+                       class="w-full bg-black border border-gray-700 text-white p-3 rounded-lg focus:outline-none focus:border-brand-accent focus:ring-1 focus:ring-brand-accent transition font-mono">
+            </div>
+            <div>
+                <label class="block text-xs uppercase tracking-wider text-gray-400 mb-2 font-mono">Base Points</label>
+                <input type="number" name="base_points" required value="100" min="10" max="5000"
+                       class="w-full bg-black border border-gray-700 text-white p-3 rounded-lg focus:outline-none focus:border-brand-accent focus:ring-1 focus:ring-brand-accent transition font-mono">
+            </div>
+        </div>
+
+        <!-- Custom Description -->
+        <div>
+            <label class="block text-xs uppercase tracking-wider text-gray-400 mb-2 font-mono">
+                Challenge Description
+                <span class="text-gray-600 normal-case tracking-normal ml-1">(Markdown supported)</span>
+            </label>
+            <textarea name="description" rows="5" required
+                      placeholder="Describe the challenge scenario for students. You can use Markdown."
+                      class="w-full bg-black border border-gray-700 text-white p-3 rounded-lg focus:outline-none focus:border-brand-accent focus:ring-1 focus:ring-brand-accent transition font-mono resize-y">{{ template.description }}</textarea>
+            <p class="text-xs text-gray-600 mt-1 italic">Pre-filled from template — edit to customise for this session.</p>
+        </div>
+
+        <!-- Container Port (only relevant for CONTAINER-type templates) -->
+        {% if template.base_docker_image %}
+        <div>
+            <label class="block text-xs uppercase tracking-wider text-gray-400 mb-2 font-mono">
+                Container Internal Port
+                <span class="text-red-500 ml-1">*</span>
+            </label>
+            <input type="number" name="internal_port" required value="80" min="1" max="65535"
+                   class="w-full bg-black border border-gray-700 text-white p-3 rounded-lg focus:outline-none focus:border-brand-accent focus:ring-1 focus:ring-brand-accent transition font-mono">
+            <p class="text-xs text-gray-600 mt-1 italic">The port the container listens on internally (e.g. 80 for Nginx, 5000 for Flask). Traefik will route traffic to this port.</p>
+        </div>
+        {% endif %}
+
+        <!-- Dynamic Template Variables -->
+        {% if variables %}
+        <div class="border-t border-gray-700 pt-5">
+            <h4 class="text-xs uppercase tracking-widest text-yellow-500 font-bold mb-4 flex items-center gap-2">
+                ⚙️ Template Configuration
+            </h4>
+            <div class="space-y-4">
+                {% for var in variables %}
+                <div>
+                    <label class="block text-xs uppercase tracking-wider text-gray-400 mb-2 font-mono">
+                        {{ var.key_name }}
+                        {% if var.is_required %}
+                        <span class="text-red-500 ml-1">*</span>
+                        {% endif %}
+                        {% if var.key_name == "FLAG" %}
+                        <span class="text-green-600 ml-1 normal-case tracking-normal font-normal">(hashed before storage — never stored as plaintext)</span>
+                        {% endif %}
+                    </label>
+                    <input type="{% if var.key_name == 'FLAG' %}password{% else %}text{% endif %}"
+                           name="custom_{{ var.key_name }}"
+                           {% if var.is_required %}required{% endif %}
+                           value="{{ var.default_value }}"
+                           placeholder="{{ var.key_name }}"
+                           class="w-full bg-black border border-gray-700 {% if var.key_name == 'FLAG' %}text-green-400 border-green-900 focus:border-green-500 focus:ring-green-500{% else %}text-yellow-500 focus:border-yellow-500 focus:ring-yellow-500{% endif %} p-3 rounded-lg focus:outline-none focus:ring-1 transition font-mono">
+                    {% if not var.is_required %}
+                    <p class="text-xs text-gray-600 mt-1 italic">Optional — default: "{{ var.default_value|default:'none' }}"</p>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Submit -->
+        <button type="submit"
+                class="w-full bg-brand-accent hover:bg-blue-600 text-white font-bold py-3 px-6 rounded-lg transition-all shadow-lg active:scale-95 text-lg">
+            🚀 Build &amp; Deploy Challenge
+        </button>
+    </form>
+
+    <!-- Result Target -->
+    <div id="builder-result" class="mt-4"></div>
+</div>

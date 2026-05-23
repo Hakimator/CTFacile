@@ -13,6 +13,7 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 import os
 from pathlib import Path
 import dj_database_url
+from celery.schedules import crontab
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -23,8 +24,12 @@ SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-9*uh0+tgq(wzy(zb(@(==
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get('DEBUG', '1') == '1'
 
-# Allow Docker and Localhost
-ALLOWED_HOSTS = ['localhost', '127.0.0.1', 'ctfacile.local', '0.0.0.0', '*']
+# In production, set ALLOWED_HOSTS env var to a comma-separated list of domains.
+# Falls back to a safe local-only list for development.
+_allowed_hosts_env = os.environ.get('ALLOWED_HOSTS', '')
+ALLOWED_HOSTS = [h.strip() for h in _allowed_hosts_env.split(',') if h.strip()] or [
+    'localhost', '127.0.0.1', 'ctfacile.local'
+]
 
 # Application definition
 INSTALLED_APPS = [
@@ -102,6 +107,13 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 STATIC_URL = "static/"
 STATICFILES_DIRS = [BASE_DIR / "core" / "static"]
+# STATIC_ROOT is the target directory for `collectstatic` in production (gunicorn).
+# In development (runserver) this is unused.
+STATIC_ROOT = BASE_DIR / "staticfiles"
+
+# Media files (user uploads — Write-Ups, challenge attachments)
+MEDIA_URL = "/media/"
+MEDIA_ROOT = BASE_DIR / "media"
 
 # Default primary key field type
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
@@ -137,3 +149,19 @@ CORS_ALLOW_ALL_ORIGINS = True
 
 # --- User Model ---
 AUTH_USER_MODEL = 'core.User'
+
+# --- Auth Redirects ---
+LOGIN_URL = '/login/'
+LOGIN_REDIRECT_URL = '/dashboard/'
+LOGOUT_REDIRECT_URL = '/login/'
+
+# --- Celery Beat Schedule (Cockroach Protocol Sweeper) ---
+CELERY_BEAT_SCHEDULE = {
+    "sweep-expired-containers-every-minute": {
+        "task": "core.tasks.cleanup_expired_instances",
+        "schedule": crontab(minute="*"),
+    },
+}
+
+# --- Magic DNS ---
+CTF_HOST_IP = "127.0.0.1"  # Change this to the server's LAN/Public IP when deploying

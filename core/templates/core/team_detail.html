@@ -1,0 +1,61 @@
+{% extends 'core/base.html' %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto py-12 px-4 sm:px-6 lg:px-8">
+    <div class="bg-gray-900/80 border border-gray-700 rounded-xl p-8 shadow-2xl backdrop-blur-sm relative overflow-hidden">
+        <div class="absolute inset-x-0 top-0 h-1 bg-brand-success transform origin-left transition-transform duration-500 shadow-[0_0_15px_rgba(34,197,94,0.5)]"></div>
+        
+        <div class="flex items-center justify-between mb-8 pb-6 border-b border-gray-700">
+            <div>
+                <h1 class="text-4xl font-black text-white uppercase tracking-wider">{{ team.name }}</h1>
+                <p class="text-gray-400 mt-1">Active Session: <span class="text-brand-accent">{{ session.name }}</span></p>
+            </div>
+            
+            <div class="bg-gray-800 border border-gray-600 rounded-lg p-4 text-center min-w-[120px]">
+                <div class="text-sm text-gray-400 font-bold uppercase tracking-widest mb-1">Score</div>
+                <div class="text-3xl font-black text-yellow-500">{{ total_score }}</div>
+            </div>
+        </div>
+
+        <div class="mb-8">
+            <h3 class="text-xl font-bold text-white mb-3 flex items-center gap-2">
+                <span class="text-brand-accent">⚿</span> Invitation Cipher
+            </h3>
+            <p class="text-gray-400 text-sm mb-3">Distribute this exact UUID strictly to authorized personnel.</p>
+            
+            <div class="flex items-center gap-3">
+                <code class="flex-grow bg-black/50 border border-gray-700 rounded px-4 py-3 text-brand-success font-mono text-lg select-all">
+                    {{ team.join_code }}
+                </code>
+            </div>
+        </div>
+
+        <div>
+            <h3 class="text-xl font-bold text-white mb-4 flex items-center gap-2">
+                <span class="text-brand-accent">👤</span> Current Operatives
+            </h3>
+            <div class="bg-black/30 rounded-lg border border-gray-800 p-4">
+                <ul class="space-y-3">
+                    {% for member in team.members.all %}
+                    <li class="flex items-center gap-3 text-gray-300">
+                        <div class="w-8 h-8 rounded bg-gray-700 flex items-center justify-center font-bold text-sm">
+                            {{ member.username|first|upper }}
+                        </div>
+                        <span class="font-mono">{{ member.username }}</span>
+                        {% if member == request.user %}
+                        <span class="bg-brand-success/20 text-brand-success text-xs px-2 py-0.5 rounded border border-brand-success/50 ml-auto">YOU</span>
+                        {% endif %}
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+
+        <div class="mt-8 pt-6 border-t border-gray-700 text-center">
+            <a href="{% url 'dashboard' %}" class="inline-block bg-brand-base hover:bg-gray-800 border border-brand-accent text-white px-6 py-2 rounded transition shadow-md">
+                Return to Command Center
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}

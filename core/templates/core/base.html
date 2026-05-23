@@ -1,121 +1,120 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CTFacile | Dashboard</title>
+    <title>CTFacile</title>
+
+    <!-- TailwindCSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            base: '#0f172a',    // slate-900
+                            surface: '#1e293b', // slate-800
+                            accent: '#3b82f6',  // blue-500
+                            success: '#22c55e', // green-500
+                            danger: '#ef4444'   // red-500
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
     <!-- HTMX -->
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
-    <!-- Alpine JS -->
+
+    <!-- Alpine.js -->
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-    <!-- Custom HTMX Security Interceptor -->
+
     {% load static %}
+    <!-- Custom HTMX Security Setup -->
     <script src="{% static 'js/htmx_config.js' %}" defer></script>
-    <!-- Inter UI Font -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
-    
-    <style>
-        :root {
-            --bg-color: #0f172a;
-            --surface-color: #1e293b;
-            --text-primary: #f8fafc;
-            --text-secondary: #94a3b8;
-            --accent-primary: #3b82f6;
-            --accent-danger: #ef4444;
-            --accent-success: #22c55e;
-            --border-color: #334155;
-        }
-
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-            font-family: 'Inter', sans-serif;
-        }
-
-        body {
-            background-color: var(--bg-color);
-            color: var(--text-primary);
-            line-height: 1.6;
-        }
-
-        /* The State-Reacting Banner */
-        .offline-banner {
-            background: var(--accent-danger);
-            color: white;
-            text-align: center;
-            padding: 0.75rem;
-            font-weight: 600;
-            position: sticky;
-            top: 0;
-            z-index: 50;
-        }
-
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 2rem;
-        }
-        
-        button {
-            background-color: var(--accent-primary);
-            color: white;
-            border: none;
-            padding: 0.5rem 1rem;
-            border-radius: 4px;
-            cursor: pointer;
-            font-weight: 600;
-            transition: background-color 0.2s;
-        }
-
-        button:hover {
-            background-color: #2563eb;
-        }
-    </style>
 </head>
-<!-- Global State Manager -->
-<body 
-    x-data="{ 
-        isOffline: false, 
-        modalOpen: false, 
-        currentChallenge: null,
-        
-        init() {
-            // Heartbeat Protocol - Fires every 15 seconds
-            setInterval(async () => {
-                try {
-                    const response = await fetch('/health/ping/');
-                    if (response.ok) {
-                        this.isOffline = false;
-                    } else {
-                        this.isOffline = true;
-                    }
-                } catch (error) {
-                    this.isOffline = true;
-                }
-            }, 15000);
-        }
-    }"
->
 
-    <!-- Cockroach Protocol Banner -->
-    <div 
-        class="offline-banner" 
-        x-show="isOffline" 
-        x-transition.opacity 
-        style="display: none;"
-    >
-        ⚠️ Connection Lost. Entering Offline Mode. Local drafts are securely cached.
+<body class="bg-brand-base text-gray-200 min-h-screen flex flex-col font-sans" x-data="{ 
+          isOffline: false, 
+          modalOpen: false, 
+          init() {
+              setInterval(async () => {
+                  try {
+                      const res = await fetch('/health/ping/');
+                      this.isOffline = !res.ok;
+                  } catch (err) {
+                      this.isOffline = true;
+                  }
+              }, 15000);
+          }
+      }">
+
+    <!-- Cockroach Header -->
+    <div x-cloak x-show="isOffline"
+        class="bg-brand-danger text-white text-center py-2 font-bold shadow-md sticky top-0 z-50">
+        ⚠️ NETWORK DROPPED - OFFLINE MODE ACTIVE
     </div>
 
-    <!-- CSRF Token setup for Django's expected name -->
+    <!-- Auth CSRF Form -->
     <form style="display:none">
         {% csrf_token %}
     </form>
 
-    <div class="container">
+    <!-- Navbar -->
+    <nav class="bg-brand-surface border-b border-gray-700 shadow-lg px-6 py-4 flex justify-between items-center">
+        <div class="flex items-center gap-4">
+            <h1 class="text-2xl font-black text-brand-accent tracking-widest">CTF<span class="text-white">acile</span>
+            </h1>
+        </div>
+
+        {% if user.is_authenticated %}
+        <div class="flex items-center gap-6">
+            <a href="{% url 'dashboard' %}" class="hover:text-brand-accent transition">Dashboard</a>
+            <a href="{% url 'leaderboard' %}" class="hover:text-brand-accent transition">Leaderboard</a>
+
+            <div class="flex items-center gap-3 border-l border-gray-600 pl-6">
+                <span class="font-mono text-sm text-gray-400">👤 {{ user.username }}</span>
+                <span class="font-mono text-sm text-brand-success font-bold">
+                    🛡️ {{ user.teams.first.name|default:"No Team" }}
+                </span>
+
+                <form method="post" action="{% url 'logout' %}" class="inline">
+                    {% csrf_token %}
+                    <button type="submit" class="text-sm text-gray-400 hover:text-white ml-4">Logout ->]</button>
+                </form>
+            </div>
+        </div>
+        {% endif %}
+    </nav>
+
+    <!-- Main Content -->
+    <main class="flex-grow max-w-7xl mx-auto w-full p-6">
         {% block content %}{% endblock %}
+    </main>
+
+    <!-- Modal Backdrop -->
+    <div x-cloak x-show="modalOpen"
+        class="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+        <div @click.away="modalOpen = false"
+            class="bg-brand-surface border border-gray-700 rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto relative"
+            id="challenge-modal-content">
+            <!-- HTMX injects content here -->
+        </div>
     </div>
 
+    <!-- Footer -->
+    <footer class="bg-brand-surface border-t border-gray-800 text-center py-6 text-sm text-gray-500 mt-auto">
+        <p>CTFacile Engine - Secure Training Environment</p>
+    </footer>
+
+    <style>
+        [x-cloak] {
+            display: none !important;
+        }
+    </style>
 </body>
+
 </html>
