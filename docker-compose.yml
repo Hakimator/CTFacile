@@ -104,6 +104,7 @@ services:
       CTF_HOST_IP: ${CTF_HOST_IP:-127.0.0.1}
       TRAEFIK_NETWORK_NAME: ctfacile_traefik_public
     volumes:
+      - .:/app                                   # live-mount source → template/code changes instant
       - /var/run/docker.sock:/var/run/docker.sock
       - static_files:/app/staticfiles
       - media_files:/app/media

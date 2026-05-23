@@ -1,50 +1,137 @@
 {% extends "core/base.html" %}
 
 {% block content %}
-<div class="mb-8">
-    <h2 class="text-4xl font-black text-brand-accent mb-1">CTF Builder Engine</h2>
-    <p class="text-gray-400 font-mono text-sm">Select an Elementary Brick to configure a new challenge for your session.</p>
+
+<!-- Page Header -->
+<div class="mb-8 flex items-center justify-between flex-wrap gap-4">
+    <div>
+        <div class="flex items-center gap-3 mb-1">
+            <span class="text-3xl">⚡</span>
+            <h2 class="text-4xl font-black text-white tracking-tight">CTF Builder Engine</h2>
+        </div>
+        <p class="text-gray-400 font-mono text-sm ml-12">
+            Assemble challenge deployments from Elementary Bricks —
+            <span class="text-yellow-400">Admin Panel</span>
+        </p>
+    </div>
+    <span class="text-xs uppercase tracking-widest font-bold text-yellow-400 bg-yellow-500/10 border border-yellow-500/30 px-3 py-1.5 rounded-full font-mono">
+        {{ templates|length }} Bricks Available
+    </span>
 </div>
 
-<div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+<!-- ============================================================ -->
+<!-- Main Builder Layout — TWO INDEPENDENT SECTIONS, no shared   -->
+<!-- Alpine scope so the right panel is never intercepted.       -->
+<!-- ============================================================ -->
+<div class="flex flex-col lg:flex-row gap-6">
 
-    <!-- LEFT COLUMN: Template Selector -->
-    <div class="lg:col-span-1 space-y-3">
-        <h3 class="text-xs uppercase tracking-widest text-gray-500 font-bold mb-4 flex items-center gap-2">
-            <span class="text-yellow-500">🧱</span> Elementary Bricks
-        </h3>
+    <!-- ===================================================== -->
+    <!-- LEFT PANEL: Alpine scope isolated here only           -->
+    <!-- ===================================================== -->
+    <div class="lg:w-72 xl:w-80 flex-shrink-0" x-data="{ selected: null }">
 
+        <div class="flex items-center gap-2 mb-4">
+            <span class="text-yellow-500 text-lg">🧱</span>
+            <span class="text-xs uppercase tracking-widest font-bold text-gray-400">Elementary Bricks</span>
+        </div>
+
+        <div class="space-y-2">
         {% for tmpl in templates %}
         <button
             hx-get="{% url 'get_template_form' tmpl.id %}"
             hx-target="#builder-canvas"
             hx-swap="innerHTML"
-            class="w-full text-left bg-gray-900 hover:bg-gray-800 border border-gray-700 hover:border-brand-accent rounded-xl p-4 transition-all group"
+            @click="selected = '{{ tmpl.id }}'"
+            :class="selected === '{{ tmpl.id }}'
+                ? 'border-brand-accent bg-brand-accent/10'
+                : 'border-gray-700/60 bg-gray-900/60 hover:border-gray-500 hover:bg-gray-800/60'"
+            class="w-full text-left border rounded-xl p-4 transition-all duration-150 group cursor-pointer"
         >
-            <div class="flex items-center justify-between">
-                <div>
-                    <p class="text-white font-bold group-hover:text-brand-accent transition">{{ tmpl.name }}</p>
-                    <p class="text-xs text-gray-500 font-mono mt-1">{{ tmpl.vulnerability_type|upper }}</p>
+            <div class="flex items-center gap-3">
+                <div :class="selected === '{{ tmpl.id }}' ? 'bg-brand-accent/20' : 'bg-gray-800'"
+                     class="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors text-lg">
+                    {% if tmpl.vulnerability_type == "crypto_base64" %}🔤
+                    {% elif tmpl.vulnerability_type == "crypto_caesar" %}🗡
+                    {% elif tmpl.vulnerability_type == "crypto_vigenere" %}🔑
+                    {% elif tmpl.vulnerability_type == "crypto_xor" %}⊕
+                    {% elif tmpl.vulnerability_type == "crypto_rsa_small" %}🔐
+                    {% elif tmpl.vulnerability_type == "forensics_eof_stego" %}🖼
+                    {% elif tmpl.vulnerability_type == "sqli" %}💉
+                    {% elif tmpl.vulnerability_type == "lfi" %}📂
+                    {% elif tmpl.vulnerability_type == "xss" %}🕷
+                    {% else %}🧩{% endif %}
                 </div>
-                <span class="text-gray-600 group-hover:text-brand-accent transition text-xl">→</span>
+                <div class="min-w-0 flex-grow">
+                    <p :class="selected === '{{ tmpl.id }}' ? 'text-brand-accent' : 'text-white group-hover:text-brand-accent'"
+                       class="font-bold text-sm transition-colors truncate">{{ tmpl.name }}</p>
+                    <div class="flex items-center gap-2 mt-1">
+                        <span class="text-xs text-gray-500 font-mono">{{ tmpl.vulnerability_type }}</span>
+                        {% if tmpl.base_docker_image %}
+                        <span class="text-xs bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded font-mono">🐳 Container</span>
+                        {% else %}
+                        <span class="text-xs bg-green-500/10 text-green-500 px-1.5 py-0.5 rounded font-mono">Static</span>
+                        {% endif %}
+                    </div>
+                </div>
+                <svg class="w-4 h-4 flex-shrink-0 text-gray-600 group-hover:text-gray-400 transition-colors"
+                     fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                </svg>
             </div>
         </button>
         {% empty %}
         <div class="p-6 text-center text-gray-500 italic border border-dashed border-gray-700 rounded-xl">
-            No templates available yet.<br>Seed the database first.
+            No templates available.<br>
+            <span class="text-xs font-mono text-gray-600">Run: python manage.py seed_db</span>
         </div>
         {% endfor %}
-    </div>
+        </div>
 
-    <!-- RIGHT COLUMN: Dynamic Builder Canvas -->
-    <div class="lg:col-span-2">
-        <div id="builder-canvas"
-             class="bg-gray-900 border border-gray-700 rounded-2xl p-8 min-h-[500px] flex items-center justify-center">
-            <div class="text-center space-y-3">
-                <p class="text-5xl">🔧</p>
-                <p class="text-gray-400 font-mono">Select a vulnerability template to configure&hellip;</p>
+        <!-- Session stats -->
+        <div class="mt-6 p-4 bg-gray-900/60 border border-gray-700/40 rounded-xl space-y-2">
+            <p class="text-xs uppercase tracking-widest text-gray-500 font-bold mb-3">Session Stats</p>
+            <div class="flex justify-between items-center">
+                <span class="text-xs text-gray-400 font-mono">Active Session</span>
+                <span class="text-xs text-brand-success font-bold font-mono">&#11044; LIVE</span>
+            </div>
+            <div class="flex justify-between items-center">
+                <span class="text-xs text-gray-400 font-mono">Bricks</span>
+                <span class="text-xs text-white font-mono">{{ templates|length }}</span>
             </div>
         </div>
+    </div>
+
+    <!-- ===================================================== -->
+    <!-- RIGHT PANEL: pure HTML + HTMX, zero Alpine.js        -->
+    <!-- ===================================================== -->
+    <div class="flex-grow min-w-0">
+
+        <!-- Thin HTMX loading bar -->
+        <div id="canvas-spinner" class="htmx-indicator h-1 bg-brand-accent rounded-full mb-3 w-full"></div>
+
+        <!-- Canvas: plain div, no flex centering, no overflow tricks -->
+        <div class="bg-gray-900/60 border border-gray-700/60 rounded-2xl">
+            <div id="builder-canvas" class="p-8">
+                <!-- Default empty state -->
+                <div class="flex flex-col items-center justify-center text-center space-y-6 py-16">
+                    <div class="grid grid-cols-3 gap-3 w-36 opacity-20">
+                        <div class="h-10 bg-blue-500/60 rounded-lg flex items-center justify-center">🔤</div>
+                        <div class="h-10 bg-orange-500/60 rounded-lg flex items-center justify-center">🗡</div>
+                        <div class="h-10 bg-purple-500/60 rounded-lg flex items-center justify-center">🔑</div>
+                        <div class="h-10 bg-red-500/60 rounded-lg flex items-center justify-center">⊕</div>
+                        <div class="h-10 bg-green-500/60 rounded-lg flex items-center justify-center">🔐</div>
+                        <div class="h-10 bg-pink-500/60 rounded-lg flex items-center justify-center">🖼</div>
+                    </div>
+                    <div>
+                        <p class="text-xl font-bold text-gray-400">Select an Elementary Brick</p>
+                        <p class="text-sm text-gray-600 mt-2 font-mono">
+                            Pick a vulnerability template from the left panel to configure a challenge.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
     </div>
 
 </div>
