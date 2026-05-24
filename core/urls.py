@@ -41,4 +41,10 @@ urlpatterns = [
     path('builder/', views.builder_dashboard, name='builder_dashboard'),
     path('builder/template/<int:template_id>/', views.get_template_form, name='get_template_form'),
     path('builder/submit/', views.submit_built_challenge, name='submit_built_challenge'),
+
+    # --- Challenge Management (Builder) ---
+    path('builder/challenges/', views.list_deployed_challenges, name='list_deployed_challenges'),
+    path('builder/challenge/<int:challenge_id>/edit/', views.get_challenge_edit_form, name='get_challenge_edit_form'),
+    path('builder/challenge/<int:challenge_id>/update/', views.update_challenge, name='update_challenge'),
+    path('builder/challenge/<int:challenge_id>/delete/', views.delete_challenge, name='delete_challenge'),
 ]

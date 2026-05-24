@@ -5,7 +5,7 @@ import zlib
 from django.core.files.base import ContentFile
 from core.models import (
     Challenge, ChallengeTemplate, TemplateVariable,
-    CTFSession, Category,
+    CTFSession, Category, ChallengePrerequisite,
 )
 
 
@@ -27,6 +27,8 @@ class ChallengeBuilderService:
         custom_params_dict: dict,
         custom_description: str | None = None,
         internal_port: int | None = None,
+        is_entry_node: bool = False,
+        prerequisite_ids: list | None = None,
     ) -> Challenge:
         """
         Validates required variables, merges defaults with instructor overrides,
@@ -75,6 +77,9 @@ class ChallengeBuilderService:
         safe_params = {k: v for k, v in final_params.items() if k not in _SENSITIVE_PARAM_KEYS}
 
         # --- Create the challenge ---
+        # Prerequisites take precedence: if any are supplied, is_entry_node is irrelevant.
+        effective_entry_node = is_entry_node and not prerequisite_ids
+
         create_kwargs = dict(
             session=session,
             category=category,
@@ -86,11 +91,23 @@ class ChallengeBuilderService:
             challenge_type=challenge_type,
             docker_image_tag=template.base_docker_image if has_docker else None,
             custom_parameters=safe_params,
+            is_entry_node=effective_entry_node,
         )
         if has_docker and internal_port is not None:
             create_kwargs["internal_port"] = internal_port
 
         challenge = Challenge.objects.create(**create_kwargs)
+
+        # --- Wire up prerequisites ---
+        for prereq_id in (prerequisite_ids or []):
+            try:
+                required = Challenge.objects.get(pk=prereq_id)
+                ChallengePrerequisite.objects.get_or_create(
+                    target_challenge=challenge,
+                    required_challenge=required,
+                )
+            except Challenge.DoesNotExist:
+                pass
 
         # Attachment generation uses full final_params (including FLAG) — transient, never DB-stored
         cls._apply_attachment_generation(template, final_params, challenge)

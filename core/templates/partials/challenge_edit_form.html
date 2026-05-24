@@ -1,0 +1,193 @@
+<div class="p-6 space-y-6">
+
+    <!-- Header -->
+    <div class="flex items-start gap-4 border-b border-gray-700/60 pb-5">
+        <div class="w-12 h-12 rounded-xl bg-yellow-500/10 border border-yellow-500/30 flex items-center justify-center text-2xl flex-shrink-0">
+            ✏️
+        </div>
+        <div class="min-w-0 flex-grow">
+            <div class="flex items-center justify-between gap-3 flex-wrap">
+                <h3 class="text-xl font-black text-white">Edit: {{ challenge.title }}</h3>
+                <button
+                    hx-get="{% url 'list_deployed_challenges' %}"
+                    hx-target="#builder-canvas"
+                    hx-swap="innerHTML"
+                    class="text-xs font-mono text-gray-400 hover:text-white border border-gray-700 hover:border-gray-500 px-3 py-1.5 rounded-lg transition-all flex-shrink-0">
+                    ← Back to list
+                </button>
+            </div>
+            <p class="text-gray-400 text-sm mt-1">
+                ID: <span class="font-mono text-gray-300">{{ challenge.id }}</span>
+                &nbsp;·&nbsp;
+                Category: <span class="font-mono text-brand-accent">{{ challenge.category.name }}</span>
+                &nbsp;·&nbsp;
+                {% if challenge.challenge_type == "CONTAINER" %}
+                <span class="text-xs bg-blue-500/15 text-blue-400 border border-blue-500/30 px-2 py-0.5 rounded font-mono">🐳 Container</span>
+                {% else %}
+                <span class="text-xs bg-green-500/10 text-green-500 border border-green-500/20 px-2 py-0.5 rounded font-mono">⬤ Static</span>
+                {% endif %}
+            </p>
+        </div>
+    </div>
+
+    <!-- Edit Form -->
+    <form hx-post="{% url 'update_challenge' challenge.id %}"
+          hx-target="#edit-result"
+          hx-swap="innerHTML"
+          class="space-y-5">
+        {% csrf_token %}
+
+        <!-- ① Challenge Identity -->
+        <div>
+            <p class="text-xs uppercase tracking-widest text-gray-500 font-bold mb-3">
+                <span class="text-brand-accent">①</span> Challenge Identity
+            </p>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label for="edit-title" class="block text-xs uppercase tracking-wider text-gray-400 mb-2 font-mono cursor-pointer">
+                        Title <span class="text-red-400">*</span>
+                    </label>
+                    <input id="edit-title" type="text" name="title" required
+                           value="{{ challenge.title }}"
+                           class="w-full bg-black/60 border border-gray-700 text-white p-3 rounded-xl focus:outline-none focus:border-brand-accent focus:ring-1 focus:ring-brand-accent transition font-mono text-sm">
+                </div>
+                <div>
+                    <label for="edit-points" class="block text-xs uppercase tracking-wider text-gray-400 mb-2 font-mono cursor-pointer">
+                        Base Points <span class="text-red-400">*</span>
+                    </label>
+                    <input id="edit-points" type="number" name="base_points" required
+                           value="{{ challenge.base_points }}" min="10" max="5000"
+                           class="w-full bg-black/60 border border-gray-700 text-white p-3 rounded-xl focus:outline-none focus:border-brand-accent focus:ring-1 focus:ring-brand-accent transition font-mono text-sm">
+                </div>
+            </div>
+        </div>
+
+        <!-- ② Description -->
+        <div>
+            <p class="text-xs uppercase tracking-widest text-gray-500 font-bold mb-3">
+                <span class="text-brand-accent">②</span> Challenge Description
+                <span class="text-gray-600 normal-case tracking-normal font-normal text-xs ml-1">— Markdown supported</span>
+            </p>
+            <label for="edit-description" class="sr-only">Challenge Description</label>
+            <textarea id="edit-description" name="description" rows="6" required
+                      class="w-full bg-black/60 border border-gray-700 text-white p-3 rounded-xl focus:outline-none focus:border-brand-accent focus:ring-1 focus:ring-brand-accent transition font-mono text-sm resize-y">{{ challenge.description }}</textarea>
+            <p class="text-xs text-gray-600 mt-1.5 italic">
+                For cipher-type challenges, the cipher block is included below the separator line. Edit only the narrative above it, or clear and rewrite freely.
+            </p>
+        </div>
+
+        <!-- ③ Container port (Docker challenges only) -->
+        {% if challenge.challenge_type == "CONTAINER" %}
+        <div>
+            <p class="text-xs uppercase tracking-widest text-gray-500 font-bold mb-3">
+                <span class="text-blue-400">③</span> Container Configuration
+            </p>
+            <div class="bg-blue-500/5 border border-blue-500/20 rounded-xl p-4">
+                <label for="edit-port" class="block text-xs uppercase tracking-wider text-gray-400 mb-2 font-mono cursor-pointer">
+                    Internal Port
+                </label>
+                <input id="edit-port" type="number" name="internal_port"
+                       value="{{ challenge.internal_port|default:80 }}" min="1" max="65535"
+                       class="w-full bg-black/60 border border-blue-700/50 text-blue-200 p-3 rounded-xl focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400 transition font-mono text-sm">
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- ④ Template Parameters -->
+        {% if var_data %}
+        <div>
+            <p class="text-xs uppercase tracking-widest text-gray-500 font-bold mb-3">
+                <span class="text-yellow-500">④</span> Template Parameters
+                <span class="text-gray-600 normal-case tracking-normal font-normal text-xs ml-1">— current stored values</span>
+            </p>
+            <div class="bg-gray-950/60 border border-gray-700/50 rounded-xl divide-y divide-gray-800/60 overflow-hidden">
+                {% for var in var_data %}
+                <div class="p-4">
+                    <div class="flex items-center justify-between mb-2">
+                        <label for="edit-var-{{ var.key_name }}"
+                               class="text-xs uppercase tracking-wider text-gray-300 font-mono font-bold cursor-pointer">
+                            {{ var.key_name }}
+                            {% if var.is_required %}<span class="text-red-400 ml-1">*</span>{% endif %}
+                        </label>
+                        {% if var.key_name == "FLAG" %}
+                        <span class="text-xs bg-yellow-500/15 text-yellow-400 border border-yellow-500/30 px-2 py-0.5 rounded font-mono">
+                            🔁 Leave blank to keep current flag
+                        </span>
+                        {% elif not var.is_required %}
+                        <span class="text-xs text-gray-600 font-mono italic">optional</span>
+                        {% endif %}
+                    </div>
+                    <input id="edit-var-{{ var.key_name }}"
+                           type="{% if var.key_name == 'FLAG' %}password{% else %}text{% endif %}"
+                           name="custom_{{ var.key_name }}"
+                           value="{% if var.key_name != 'FLAG' %}{{ var.stored_value }}{% endif %}"
+                           placeholder="{% if var.key_name == 'FLAG' %}Enter new flag to replace (leave blank to keep){% else %}{{ var.key_name }}{% endif %}"
+                           class="w-full p-3 rounded-lg focus:outline-none focus:ring-1 transition font-mono text-sm
+                                  {% if var.key_name == 'FLAG' %}
+                                      bg-yellow-950/40 border border-yellow-700/50 text-yellow-300 focus:border-yellow-400 focus:ring-yellow-400 placeholder-yellow-900
+                                  {% else %}
+                                      bg-black/60 border border-gray-700 text-yellow-400 focus:border-yellow-500 focus:ring-yellow-500 placeholder-gray-700
+                                  {% endif %}">
+                </div>
+                {% endfor %}
+            </div>
+            <p class="text-xs text-gray-600 mt-1.5 italic">
+                Non-FLAG fields show their stored values. Blank fields are skipped (existing value kept).
+            </p>
+        </div>
+        {% endif %}
+
+        <!-- ⑤ Unlock Configuration -->
+        <div>
+            <p class="text-xs uppercase tracking-widest text-gray-500 font-bold mb-3">
+                <span class="text-purple-400">⑤</span> Unlock Configuration
+                <span class="text-gray-600 normal-case tracking-normal font-normal text-xs ml-1">— when can teams see this challenge?</span>
+            </p>
+            <div class="bg-gray-950/60 border border-gray-700/50 rounded-xl p-4 space-y-4">
+
+                <!-- Entry node toggle -->
+                <label for="edit-entry-node" class="flex items-center gap-3 cursor-pointer group">
+                    <input type="checkbox" id="edit-entry-node" name="is_entry_node" value="1"
+                           {% if challenge.is_entry_node %}checked{% endif %}
+                           class="w-4 h-4 rounded accent-purple-500 flex-shrink-0">
+                    <div>
+                        <span class="text-white text-sm font-medium group-hover:text-purple-300 transition">Entry Node</span>
+                        <span class="text-gray-500 text-xs ml-2">— always visible to all teams, no prerequisites required</span>
+                    </div>
+                </label>
+
+                <!-- Prerequisites multi-select -->
+                {% if existing_challenges %}
+                <div>
+                    <p class="text-xs text-gray-500 mb-2 font-mono">— OR — unlock after solving:</p>
+                    <div class="max-h-36 overflow-y-auto space-y-1.5 bg-black/40 border border-gray-800 rounded-lg p-3">
+                        {% for ch in existing_challenges %}
+                        <label for="edit-prereq-{{ ch.id }}" class="flex items-center gap-2 cursor-pointer group">
+                            <input type="checkbox" id="edit-prereq-{{ ch.id }}" name="prerequisite_ids" value="{{ ch.id }}"
+                                   {% if ch.id in current_prereq_ids %}checked{% endif %}
+                                   class="w-3.5 h-3.5 rounded accent-purple-500 flex-shrink-0">
+                            <span class="text-xs font-mono text-gray-500 flex-shrink-0">[{{ ch.category.name }}]</span>
+                            <span class="text-sm text-gray-300 group-hover:text-white transition truncate">{{ ch.title }}</span>
+                        </label>
+                        {% endfor %}
+                    </div>
+                    <p class="text-xs text-gray-600 mt-1.5 italic">If prerequisites are selected, Entry Node is ignored.</p>
+                </div>
+                {% else %}
+                <p class="text-xs text-gray-600 italic">No other challenges in the session to use as prerequisites.</p>
+                {% endif %}
+
+            </div>
+        </div>
+
+        <!-- Submit -->
+        <button type="submit"
+                class="w-full bg-gradient-to-r from-yellow-600 to-orange-600 hover:from-yellow-500 hover:to-orange-500 text-white font-bold py-4 px-6 rounded-xl transition-all shadow-lg active:scale-[0.98] text-base flex items-center justify-center gap-3">
+            💾 Save Changes
+        </button>
+    </form>
+
+    <!-- Update Result -->
+    <div id="edit-result" class="mt-2"></div>
+
+</div>

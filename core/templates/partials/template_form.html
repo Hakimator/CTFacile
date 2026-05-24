@@ -142,6 +142,47 @@
         </div>
         {% endif %}
 
+        <!-- ⑤ Unlock Configuration -->
+        <div>
+            <p class="text-xs uppercase tracking-widest text-gray-500 font-bold mb-3">
+                <span class="text-purple-400">&#9316;</span> Unlock Configuration
+                <span class="text-gray-600 normal-case tracking-normal font-normal text-xs ml-1">— when can teams see this challenge?</span>
+            </p>
+            <div class="bg-gray-950/60 border border-gray-700/50 rounded-xl p-4 space-y-4">
+
+                <!-- Entry node toggle -->
+                <label for="field-entry-node" class="flex items-center gap-3 cursor-pointer group">
+                    <input type="checkbox" id="field-entry-node" name="is_entry_node" value="1"
+                           class="w-4 h-4 rounded accent-purple-500 flex-shrink-0">
+                    <div>
+                        <span class="text-white text-sm font-medium group-hover:text-purple-300 transition">Entry Node</span>
+                        <span class="text-gray-500 text-xs ml-2">— always visible to all teams, no prerequisites required</span>
+                    </div>
+                </label>
+
+                <!-- Prerequisites multi-select -->
+                {% if existing_challenges %}
+                <div>
+                    <p class="text-xs text-gray-500 mb-2 font-mono">— OR — unlock after solving:</p>
+                    <div class="max-h-36 overflow-y-auto space-y-1.5 bg-black/40 border border-gray-800 rounded-lg p-3">
+                        {% for ch in existing_challenges %}
+                        <label for="prereq-{{ ch.id }}" class="flex items-center gap-2 cursor-pointer group">
+                            <input type="checkbox" id="prereq-{{ ch.id }}" name="prerequisite_ids" value="{{ ch.id }}"
+                                   class="w-3.5 h-3.5 rounded accent-purple-500 flex-shrink-0">
+                            <span class="text-xs font-mono text-gray-500 flex-shrink-0">[{{ ch.category.name }}]</span>
+                            <span class="text-sm text-gray-300 group-hover:text-white transition truncate">{{ ch.title }}</span>
+                        </label>
+                        {% endfor %}
+                    </div>
+                    <p class="text-xs text-gray-600 mt-1.5 italic">If prerequisites are selected, Entry Node is ignored.</p>
+                </div>
+                {% else %}
+                <p class="text-xs text-gray-600 italic">No existing challenges in the active session — check Entry Node to make this visible.</p>
+                {% endif %}
+
+            </div>
+        </div>
+
         <!-- Submit -->
         <button type="submit"
                 class="w-full bg-gradient-to-r from-brand-accent to-blue-600 hover:from-blue-500 hover:to-blue-700 text-white font-bold py-4 px-6 rounded-xl transition-all shadow-lg active:scale-[0.98] text-base flex items-center justify-center gap-3">

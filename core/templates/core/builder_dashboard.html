@@ -14,9 +14,19 @@
             <span class="text-yellow-400">Admin Panel</span>
         </p>
     </div>
-    <span class="text-xs uppercase tracking-widest font-bold text-yellow-400 bg-yellow-500/10 border border-yellow-500/30 px-3 py-1.5 rounded-full font-mono">
-        {{ templates|length }} Bricks Available
-    </span>
+    <div class="flex items-center gap-3">
+        <span class="text-xs uppercase tracking-widest font-bold text-yellow-400 bg-yellow-500/10 border border-yellow-500/30 px-3 py-1.5 rounded-full font-mono">
+            {{ templates|length }} Bricks Available
+        </span>
+        <button
+            hx-get="{% url 'list_deployed_challenges' %}"
+            hx-target="#builder-canvas"
+            hx-swap="innerHTML"
+            hx-indicator="#canvas-spinner"
+            class="text-sm font-bold text-white bg-gray-700/60 hover:bg-gray-600/80 border border-gray-600 hover:border-gray-400 px-4 py-2 rounded-xl transition-all flex items-center gap-2">
+            🗂 Manage Challenges
+        </button>
+    </div>
 </div>
 
 <!-- ============================================================ -->

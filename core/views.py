@@ -1,3 +1,4 @@
+import hashlib
 import logging
 from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse
@@ -7,7 +8,7 @@ from django.core.cache import cache
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
-from core.models import Challenge, Category, Submission, Team, ActiveInstance, CTFSession, TeamMembership, ChallengeTemplate, SiteSettings
+from core.models import Challenge, Category, Submission, Team, ActiveInstance, CTFSession, TeamMembership, ChallengeTemplate, SiteSettings, ChallengePrerequisite
 from core.services.flag_validation_service import FlagValidationService
 from core.services.scoring_service import ScoringService
 from core.services.docker_manager_service import DockerManagerService
@@ -237,9 +238,19 @@ def builder_dashboard(request):
 def get_template_form(request, template_id):
     template = get_object_or_404(ChallengeTemplate, pk=template_id)
     variables = template.variables.all()
+    active_session = CTFSession.objects.filter(is_active=True).first()
+    existing_challenges = []
+    if active_session:
+        existing_challenges = (
+            Challenge.objects
+            .filter(session=active_session)
+            .select_related('category')
+            .order_by('category__name', 'title')
+        )
     return render(request, 'partials/template_form.html', {
         'template': template,
         'variables': variables,
+        'existing_challenges': existing_challenges,
     })
 
 
@@ -255,6 +266,10 @@ def submit_built_challenge(request):
     # Internal port override (only relevant for CONTAINER challenges)
     _raw_port = request.POST.get('internal_port', '').strip()
     internal_port = int(_raw_port) if _raw_port.isdigit() else None
+
+    # Unlock config
+    is_entry_node = request.POST.get('is_entry_node') == '1'
+    prerequisite_ids = [int(x) for x in request.POST.getlist('prerequisite_ids') if x.isdigit()]
 
     # Extract custom_* fields into a dict
     custom_params = {
@@ -281,6 +296,8 @@ def submit_built_challenge(request):
             custom_params_dict=custom_params,
             custom_description=custom_description,
             internal_port=internal_port,
+            is_entry_node=is_entry_node,
+            prerequisite_ids=prerequisite_ids,
         )
         return HttpResponse(
             f'<div class="p-4 text-green-200 bg-green-900 rounded border border-green-700">'
@@ -363,3 +380,139 @@ def spawn_challenge_instance(request, challenge_id):
             f'<div class="p-3 bg-red-900/50 border border-red-700 text-red-200 rounded">Spawn failed: {str(e)}</div>',
             status=503
         )
+
+
+# =============================================================================
+# Challenge Management — Builder Engine (list / edit / update / delete)
+# =============================================================================
+
+@login_required
+def list_deployed_challenges(request):
+    """Renders the deployed-challenges management table into #builder-canvas."""
+    active_session = CTFSession.objects.filter(is_active=True).first()
+    challenges = []
+    if active_session:
+        challenges = (
+            Challenge.objects
+            .filter(session=active_session)
+            .select_related('category', 'template')
+            .prefetch_related('prerequisites')
+            .order_by('category__name', 'title')
+        )
+    return render(request, 'partials/challenge_list.html', {
+        'challenges': challenges,
+        'active_session': active_session,
+    })
+
+
+@login_required
+def get_challenge_edit_form(request, challenge_id):
+    """Renders a pre-filled edit form for an existing challenge."""
+    challenge = get_object_or_404(Challenge, id=challenge_id)
+    variables = challenge.template.variables.all() if challenge.template else []
+    active_session = CTFSession.objects.filter(is_active=True).first()
+    existing_challenges = []
+    current_prereq_ids = set()
+    if active_session:
+        existing_challenges = (
+            Challenge.objects
+            .filter(session=active_session)
+            .exclude(pk=challenge_id)
+            .select_related('category')
+            .order_by('category__name', 'title')
+        )
+    current_prereq_ids = set(
+        ChallengePrerequisite.objects
+        .filter(target_challenge=challenge)
+        .values_list('required_challenge_id', flat=True)
+    )
+    # Resolve stored values per variable so the template can render them without dict lookups
+    stored_params = challenge.custom_parameters or {}
+    var_data = [
+        {
+            'key_name': var.key_name,
+            'is_required': var.is_required,
+            'default_value': var.default_value or '',
+            'stored_value': stored_params.get(var.key_name, var.default_value or ''),
+        }
+        for var in variables
+    ]
+    return render(request, 'partials/challenge_edit_form.html', {
+        'challenge': challenge,
+        'var_data': var_data,
+        'existing_challenges': existing_challenges,
+        'current_prereq_ids': current_prereq_ids,
+    })
+
+
+@require_POST
+@login_required
+def update_challenge(request, challenge_id):
+    """Updates an existing challenge from the builder edit form."""
+    challenge = get_object_or_404(Challenge, id=challenge_id)
+
+    title = request.POST.get('title', challenge.title).strip()
+    base_points_raw = request.POST.get('base_points', str(challenge.base_points))
+    base_points = int(base_points_raw) if base_points_raw.isdigit() else challenge.base_points
+    description = request.POST.get('description', challenge.description).strip()
+
+    _raw_port = request.POST.get('internal_port', '').strip()
+    if _raw_port.isdigit() and challenge.challenge_type == 'CONTAINER':
+        challenge.internal_port = int(_raw_port)
+
+    is_entry_node = request.POST.get('is_entry_node') == '1'
+    prerequisite_ids = [int(x) for x in request.POST.getlist('prerequisite_ids') if x.isdigit()]
+    effective_entry_node = is_entry_node and not prerequisite_ids
+
+    # Update custom parameters (never store FLAG plaintext)
+    new_params = {
+        key.replace('custom_', '', 1): value
+        for key, value in request.POST.items()
+        if key.startswith('custom_') and key != 'custom_FLAG' and value.strip()
+    }
+    merged_params = {**(challenge.custom_parameters or {}), **new_params}
+
+    # Optional FLAG reset
+    new_flag = request.POST.get('custom_FLAG', '').strip()
+    if new_flag:
+        challenge.flag_hash = hashlib.sha256(new_flag.encode('utf-8')).hexdigest()
+
+    challenge.title = title
+    challenge.base_points = base_points
+    challenge.description = description
+    challenge.custom_parameters = merged_params
+    challenge.is_entry_node = effective_entry_node
+    challenge.save()
+
+    # Rebuild prerequisites
+    ChallengePrerequisite.objects.filter(target_challenge=challenge).delete()
+    for prereq_id in prerequisite_ids:
+        try:
+            required = Challenge.objects.get(pk=prereq_id)
+            ChallengePrerequisite.objects.get_or_create(
+                target_challenge=challenge,
+                required_challenge=required,
+            )
+        except Challenge.DoesNotExist:
+            pass
+
+    return HttpResponse(
+        f'<div class="p-4 text-green-200 bg-green-900 rounded border border-green-700">'
+        f'✅ <strong>{challenge.title}</strong> updated successfully! '
+        f'<a href="#" hx-get="{reverse("list_deployed_challenges")}" hx-target="#builder-canvas" hx-swap="innerHTML" '
+        f'class="underline text-green-300 hover:text-white ml-2">← Back to list</a></div>'
+    )
+
+
+@require_POST
+@login_required
+def delete_challenge(request, challenge_id):
+    """Deletes a challenge and returns an empty swap to remove its row."""
+    challenge = get_object_or_404(Challenge, id=challenge_id)
+    title = challenge.title
+    challenge.delete()
+    # Return empty string — HTMX will replace the challenge row with nothing (outerHTML swap)
+    return HttpResponse(
+        f'<tr><td colspan="6" class="px-4 py-2 text-center text-sm text-green-400 font-mono">'
+        f'🗑 "{title}" deleted.</td></tr>'
+    )
