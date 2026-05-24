@@ -3,51 +3,41 @@
 {% block content %}
 <div class="min-h-[70vh] flex flex-col justify-center items-center">
 
-    <div class="bg-brand-surface border border-gray-700 p-10 rounded-2xl shadow-2xl max-w-md w-full">
-        <h2 class="text-3xl font-black mb-2 text-center text-white">SYSTEM_LOGIN</h2>
-        <p class="text-center text-gray-400 text-sm mb-8 font-mono">Authenticate to access the skill tree</p>
+    <div class="border border-gray-800/60 rounded-xl p-8 w-full max-w-sm bg-gray-900/30">
 
-        <form method="post" class="space-y-6">
+        <!-- Header -->
+        <div class="mb-7 text-center">
+            <h2 class="text-xl font-bold text-white mb-1">Sign in</h2>
+            <p class="text-xs text-gray-500 font-mono">Authenticate to access the skill tree</p>
+        </div>
+
+        {% if form.errors %}
+        <div class="mb-5 p-3 bg-red-950/30 border border-red-800/50 text-red-300 text-sm rounded-lg text-center">
+            Invalid credentials. Access denied.
+        </div>
+        {% endif %}
+
+        <form method="post" class="space-y-4">
             {% csrf_token %}
 
-            {% if form.errors %}
-            <div class="p-3 bg-brand-danger/20 border border-brand-danger text-brand-danger rounded text-sm mb-4">
-                Invalid credentials. Access denied.
-            </div>
-            {% endif %}
-
             <div>
-                <label class="block text-xs uppercase tracking-wider text-gray-400 mb-2 font-mono">Username</label>
-                {{ form.username }}
-                <!-- We apply Tailwind classes directly if we can, or just style inputs globally in base. Here we expect standard widget rendering -> we'll style input tags globally via CSS if needed, but for now standard blocks -->
-                <style>
-                    input[type="text"],
-                    input[type="password"] {
-                        width: 100%;
-                        padding: 0.75rem;
-                        background: #0f172a;
-                        border: 1px solid #334155;
-                        border-radius: 0.5rem;
-                        color: white;
-                    }
-
-                    input:focus {
-                        outline: 2px solid #3b82f6;
-                        border-color: transparent;
-                    }
-                </style>
+                <label class="block text-xs font-medium text-gray-400 mb-1.5 uppercase tracking-wider">Username</label>
+                <input type="text" name="username" required autofocus
+                       class="w-full bg-gray-900/60 border border-gray-700/60 rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand-accent/60 focus:ring-1 focus:ring-brand-accent/30 transition font-mono">
             </div>
 
             <div>
-                <label class="block text-xs uppercase tracking-wider text-gray-400 mb-2 font-mono">Password</label>
-                {{ form.password }}
+                <label class="block text-xs font-medium text-gray-400 mb-1.5 uppercase tracking-wider">Password</label>
+                <input type="password" name="password" required
+                       class="w-full bg-gray-900/60 border border-gray-700/60 rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand-accent/60 focus:ring-1 focus:ring-brand-accent/30 transition font-mono">
             </div>
 
             <button type="submit"
-                class="w-full bg-brand-accent hover:bg-blue-600 text-white font-bold py-3 px-4 rounded transition-all shadow-lg active:scale-95">
-                INITIALIZE_SESSION
+                    class="w-full inline-flex items-center justify-center px-4 py-2.5 text-sm font-semibold text-white bg-brand-accent hover:bg-blue-600 rounded-lg transition-all active:scale-[0.99]">
+                Sign In
             </button>
         </form>
+
     </div>
 
 </div>

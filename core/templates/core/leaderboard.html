@@ -1,55 +1,59 @@
 {% extends "core/base.html" %}
 
 {% block content %}
-<div class="mb-10">
-    <h2 class="text-4xl font-black mb-2 text-brand-accent">Global Leaderboard</h2>
-    <p class="text-gray-400">Current session rankings evaluated by Dynamic Scoring.</p>
+<div class="mb-6">
+    <h2 class="text-2xl font-bold text-white tracking-tight">Leaderboard</h2>
+    <p class="text-sm text-gray-500 mt-1">Session rankings evaluated by dynamic scoring.</p>
 </div>
 
-<div class="bg-brand-surface border border-gray-700 rounded-xl overflow-hidden shadow-2xl max-w-4xl mx-auto">
+<div class="border border-gray-800/60 rounded-xl overflow-hidden max-w-3xl">
     <table class="w-full text-left border-collapse">
         <thead>
-            <tr
-                class="bg-gray-800/50 border-b border-gray-700 text-gray-400 font-mono text-sm tracking-wider uppercase">
-                <th class="py-4 px-6 w-24 text-center">Rank</th>
-                <th class="py-4 px-6">Team Designation</th>
-                <th class="py-4 px-6 text-right">Score</th>
+            <tr class="border-b border-gray-800/60 bg-gray-900/40">
+                <th class="py-3 px-5 text-xs font-semibold text-gray-500 uppercase tracking-wider w-20 text-center">Rank</th>
+                <th class="py-3 px-5 text-xs font-semibold text-gray-500 uppercase tracking-wider">Team</th>
+                <th class="py-3 px-5 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right">Score</th>
             </tr>
         </thead>
-        <tbody class="divide-y divide-gray-800/50">
+        <tbody class="divide-y divide-gray-800/40">
             {% for row in leaderboard %}
-            <tr
-                class="hover:bg-gray-800/30 transition-colors {% if row.team.id == request.user.teams.first.id %}bg-brand-accent/10{% endif %}">
-                <td class="py-4 px-6 text-center font-bold text-gray-500">
-                    {% if forloop.counter == 1 %}🥇
-                    {% elif forloop.counter == 2 %}🥈
-                    {% elif forloop.counter == 3 %}🥉
+            <tr class="hover:bg-white/2 transition-colors {% if row.team.id == request.user.teams.first.id %}bg-brand-accent/5{% endif %}">
+                <!-- Rank -->
+                <td class="py-3.5 px-5 text-center">
+                    {% if forloop.counter == 1 %}
+                    <span class="text-sm font-bold text-amber-400 font-mono">1</span>
+                    {% elif forloop.counter == 2 %}
+                    <span class="text-sm font-bold text-gray-300 font-mono">2</span>
+                    {% elif forloop.counter == 3 %}
+                    <span class="text-sm font-bold text-amber-700 font-mono">3</span>
                     {% else %}
-                    {{ forloop.counter }}
+                    <span class="text-sm text-gray-600 font-mono">{{ forloop.counter }}</span>
                     {% endif %}
                 </td>
-                <td class="py-4 px-6 text-white font-bold flex items-center gap-3">
-                    {{ row.team.name }}
-                    {% if row.team.id == request.user.teams.first.id %}
-                    <span
-                        class="bg-brand-accent text-white text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-widest">You</span>
-                    {% endif %}
+                <!-- Team -->
+                <td class="py-3.5 px-5">
+                    <div class="flex items-center gap-2">
+                        <span class="text-sm font-medium text-gray-100">{{ row.team.name }}</span>
+                        {% if row.team.id == request.user.teams.first.id %}
+                        <span class="text-xs font-semibold text-brand-accent bg-brand-accent/10 border border-brand-accent/25 px-1.5 py-0.5 rounded font-mono">you</span>
+                        {% endif %}
+                    </div>
                 </td>
-                <td class="py-4 px-6 text-right font-mono font-bold text-brand-accent">
-                    {{ row.score|floatformat:0 }} pts
+                <!-- Score -->
+                <td class="py-3.5 px-5 text-right">
+                    <span class="text-sm font-semibold text-gray-200 font-mono">{{ row.score|floatformat:0 }}</span>
+                    <span class="text-xs text-gray-600 font-mono ml-1">pts</span>
                 </td>
             </tr>
             {% empty %}
             <tr>
-                <td colspan="3" class="py-8 text-center text-gray-500 italic">Leaderboard is barren. Teams have not
-                    deployed.</td>
+                <td colspan="3" class="py-12 text-center text-sm text-gray-600 italic">No teams have scored yet.</td>
             </tr>
             {% endfor %}
         </tbody>
     </table>
-
-    <div class="bg-gray-900/50 text-center py-3 text-xs text-gray-500 font-mono border-t border-gray-800">
-        Results cached every 60 seconds to prevent telemetry floods.
+    <div class="border-t border-gray-800/50 px-5 py-2.5 bg-gray-900/20">
+        <p class="text-xs text-gray-600 font-mono">Results cached every 60 seconds.</p>
     </div>
 </div>
 {% endblock %}

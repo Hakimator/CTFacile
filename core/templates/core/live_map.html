@@ -1,27 +1,50 @@
 {% extends "core/base.html" %}
 
 {% block content %}
-<div class="mb-8 flex justify-between items-center">
+<div class="mb-6 flex items-start justify-between gap-4 flex-wrap">
     <div>
-        <h2 class="text-4xl font-black mb-2 text-brand-accent">Live Cyber-Map</h2>
-        <p class="text-gray-400">Classroom Projector Feed - Auto-refreshing via HTMX polling.</p>
+        <div class="flex items-center gap-2 mb-0.5">
+            <span class="relative flex h-2 w-2">
+                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-accent opacity-75"></span>
+                <span class="relative inline-flex rounded-full h-2 w-2 bg-brand-accent"></span>
+            </span>
+            <h2 class="text-2xl font-bold text-white tracking-tight">Live Cyber Map</h2>
+        </div>
+        <p class="text-sm text-gray-500 ml-4">Classroom projector feed &mdash; auto-refreshing every 5 seconds.</p>
     </div>
-    
+
     {% if request.user.is_staff or request.user.role == 'ADMIN' %}
-    <div>
-        <button hx-post="{% url 'toggle_ctf_pause' %}" hx-swap="outerHTML" 
-                class="{% if is_paused %}bg-green-600 hover:bg-green-700{% else %}bg-red-600 hover:bg-red-700{% endif %} text-white px-4 py-2 rounded font-bold transition shadow-[0_0_15px_rgba(220,38,38,0.5)]">
-            {% if is_paused %}Resume CTF{% else %}Pause CTF{% endif %}
-        </button>
-    </div>
+    <button hx-post="{% url 'toggle_ctf_pause' %}" hx-swap="outerHTML"
+            class="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg border transition-all
+                   {% if is_paused %}
+                       text-emerald-300 bg-emerald-950/30 border-emerald-800/50 hover:bg-emerald-950/50
+                   {% else %}
+                       text-red-300 bg-red-950/30 border-red-800/50 hover:bg-red-950/50
+                   {% endif %}">
+        {% if is_paused %}
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="6 3 20 12 6 21 6 3"/>
+        </svg>
+        Resume CTF
+        {% else %}
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <rect width="4" height="16" x="6" y="4" rx="1"/><rect width="4" height="16" x="14" y="4" rx="1"/>
+        </svg>
+        Pause CTF
+        {% endif %}
+    </button>
     {% endif %}
 </div>
 
-<!-- This container polls the server every 5 seconds and swaps the inner HTML -->
 <div hx-get="{% url 'live_cyber_map_data' %}" hx-trigger="every 5s" hx-swap="innerHTML">
-    <!-- Initial Loading State -->
-    <div class="flex justify-center items-center h-64 text-brand-accent animate-pulse text-2xl font-mono">
-        Establishing Link to Telemetry Feed...
+    <div class="flex items-center justify-center h-48 text-sm text-gray-500 font-mono">
+        <div class="flex items-center gap-2">
+            <svg class="animate-spin w-4 h-4 text-brand-accent" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"/>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+            </svg>
+            Connecting to telemetry feed...
+        </div>
     </div>
 </div>
 {% endblock %}

@@ -1,65 +1,79 @@
 {% extends 'core/base.html' %}
 
 {% block content %}
-<div class="max-w-6xl mx-auto py-12 px-4 sm:px-6 lg:px-8">
-    <div class="text-center mb-12">
-        <h1 class="text-5xl font-black text-white uppercase tracking-wider mb-3">Enlistment Protocol</h1>
-        <p class="text-xl text-gray-400">Join a unit or forge your own path to participate in the CTF.</p>
-        
+<div class="max-w-3xl mx-auto py-12">
+    <div class="mb-10 text-center">
+        <h1 class="text-2xl font-bold text-white tracking-tight mb-2">Join or Create a Team</h1>
+        <p class="text-sm text-gray-500">Form a squad to compete in the current CTF session.</p>
+
         {% if error %}
-        <div class="mt-6 p-4 bg-red-900/50 border border-red-500 text-red-200 rounded max-w-2xl mx-auto">
+        <div class="mt-5 p-3 bg-red-950/30 border border-red-800/50 text-red-300 text-sm rounded-lg max-w-md mx-auto">
             {{ error }}
         </div>
         {% endif %}
     </div>
 
-    <!-- Error Catch -->
-    <div id="team-error" class="mb-8 empty:hidden max-w-2xl mx-auto"></div>
+    <div id="team-error" class="mb-6 empty:hidden"></div>
 
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
-        
-        <!-- Join Team Card -->
-        <div class="bg-gray-900/80 border border-gray-700 rounded-xl p-8 shadow-2xl backdrop-blur-sm relative overflow-hidden group">
-            <div class="absolute inset-x-0 top-0 h-1 bg-brand-accent transform origin-left transition-transform duration-500 shadow-[0_0_15px_rgba(59,130,246,0.5)]"></div>
-            
-            <h2 class="text-2xl font-bold text-white mb-2 flex items-center gap-2">
-                <span class="text-brand-accent">⬡</span> Join Squad
-            </h2>
-            <p class="text-gray-400 mb-6 text-sm">Use the secure UUID provided by your commander.</p>
-            
-            <form hx-post="{% url 'join_team_action' %}" hx-target="#team-error" hx-swap="innerHTML">
-                {% csrf_token %}
-                <div class="mb-4">
-                    <label class="block text-sm font-medium text-gray-300 mb-2">Join Code (UUID)</label>
-                    <input type="text" name="join_code" placeholder="e.g. 550e8400-e29b-41d4-a716-446655440000" required
-                        class="w-full bg-brand-base border border-gray-700 rounded px-4 py-3 text-white focus:outline-none focus:border-brand-accent focus:ring-1 focus:ring-brand-accent transition font-mono text-sm">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+        <!-- Join Team -->
+        <div class="border border-gray-800/60 rounded-xl overflow-hidden">
+            <div class="px-5 py-4 border-b border-gray-800/50 bg-gray-900/30">
+                <div class="flex items-center gap-2 mb-1">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="text-brand-accent">
+                        <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+                        <path d="M19 8v6"/><path d="M22 11h-6"/>
+                    </svg>
+                    <h2 class="text-sm font-semibold text-white">Join a Squad</h2>
                 </div>
-                <button type="submit" class="w-full bg-brand-accent hover:bg-blue-600 text-white font-bold py-3 px-4 rounded transition duration-200 shadow-lg mt-2">
-                    Initialize Uplink
-                </button>
-            </form>
+                <p class="text-xs text-gray-500">Use the invite code provided by your team leader.</p>
+            </div>
+            <div class="p-5">
+                <form hx-post="{% url 'join_team_action' %}" hx-target="#team-error" hx-swap="innerHTML">
+                    {% csrf_token %}
+                    <div class="mb-4">
+                        <label class="block text-xs font-medium text-gray-400 mb-1.5">Join Code (UUID)</label>
+                        <input type="text" name="join_code"
+                               placeholder="550e8400-e29b-41d4-a716-446655440000"
+                               required
+                               class="w-full bg-gray-900/60 border border-gray-700/60 rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand-accent/60 focus:ring-1 focus:ring-brand-accent/30 transition font-mono placeholder-gray-600">
+                    </div>
+                    <button type="submit"
+                            class="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold text-white bg-brand-accent hover:bg-blue-600 rounded-lg transition-all">
+                        Join Team
+                    </button>
+                </form>
+            </div>
         </div>
 
-        <!-- Create Team Card -->
-        <div class="bg-gray-900/80 border border-gray-700 rounded-xl p-8 shadow-2xl backdrop-blur-sm relative overflow-hidden group">
-            <div class="absolute inset-x-0 top-0 h-1 bg-purple-500 transform origin-left transition-transform duration-500 shadow-[0_0_15px_rgba(168,85,247,0.5)]"></div>
-            
-            <h2 class="text-2xl font-bold text-white mb-2 flex items-center gap-2">
-                <span class="text-purple-500">⬢</span> Forge unit
-            </h2>
-            <p class="text-gray-400 mb-6 text-sm">Establish a new squad and receive an invite cipher.</p>
-            
-            <form hx-post="{% url 'create_team_action' %}" hx-target="#team-error" hx-swap="innerHTML">
-                {% csrf_token %}
-                <div class="mb-4">
-                    <label class="block text-sm font-medium text-gray-300 mb-2">Unit Designation</label>
-                    <input type="text" name="team_name" placeholder="Team Name..." required
-                        class="w-full bg-brand-base border border-gray-700 rounded px-4 py-3 text-white focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition font-mono">
+        <!-- Create Team -->
+        <div class="border border-gray-800/60 rounded-xl overflow-hidden">
+            <div class="px-5 py-4 border-b border-gray-800/50 bg-gray-900/30">
+                <div class="flex items-center gap-2 mb-1">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="text-violet-400">
+                        <path d="M5 12h14"/><path d="M12 5v14"/>
+                    </svg>
+                    <h2 class="text-sm font-semibold text-white">Create a Squad</h2>
                 </div>
-                <button type="submit" class="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-4 rounded transition duration-200 shadow-lg mt-2">
-                    Establish Command
-                </button>
-            </form>
+                <p class="text-xs text-gray-500">Start a new team and receive an invite code to share.</p>
+            </div>
+            <div class="p-5">
+                <form hx-post="{% url 'create_team_action' %}" hx-target="#team-error" hx-swap="innerHTML">
+                    {% csrf_token %}
+                    <div class="mb-4">
+                        <label class="block text-xs font-medium text-gray-400 mb-1.5">Team Name</label>
+                        <input type="text" name="team_name"
+                               placeholder="e.g. NullPointers"
+                               required
+                               class="w-full bg-gray-900/60 border border-gray-700/60 rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-violet-500/60 focus:ring-1 focus:ring-violet-500/30 transition placeholder-gray-600">
+                    </div>
+                    <button type="submit"
+                            class="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold text-white bg-violet-700 hover:bg-violet-600 rounded-lg transition-all">
+                        Create Team
+                    </button>
+                </form>
+            </div>
         </div>
 
     </div>
