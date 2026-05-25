@@ -1,9 +1,10 @@
 import hashlib
 import logging
+import os
 from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse
 from django.contrib.auth.decorators import login_required
-from django.http import HttpResponse, JsonResponse
+from django.http import HttpResponse, JsonResponse, FileResponse, Http404
 from django.core.cache import cache
 from django.utils import timezone
 from django.views.decorators.http import require_POST
@@ -516,3 +517,17 @@ def delete_challenge(request, challenge_id):
         f'<tr><td colspan="6" class="px-4 py-2 text-center text-sm text-green-400 font-mono">'
         f'🗑 "{title}" deleted.</td></tr>'
     )
+
+
+@login_required
+def download_challenge_attachment(request, challenge_id):
+    """Serves the challenge attachment file via Django (works with gunicorn, no nginx needed)."""
+    challenge = get_object_or_404(Challenge, id=challenge_id)
+    if not challenge.attachment:
+        raise Http404("No attachment for this challenge.")
+    try:
+        f = challenge.attachment.open('rb')
+    except (FileNotFoundError, OSError):
+        raise Http404("Attachment file not found on disk.")
+    filename = os.path.basename(challenge.attachment.name)
+    return FileResponse(f, as_attachment=True, filename=filename)

@@ -47,4 +47,7 @@ urlpatterns = [
     path('builder/challenge/<int:challenge_id>/edit/', views.get_challenge_edit_form, name='get_challenge_edit_form'),
     path('builder/challenge/<int:challenge_id>/update/', views.update_challenge, name='update_challenge'),
     path('builder/challenge/<int:challenge_id>/delete/', views.delete_challenge, name='delete_challenge'),
+
+    # --- File Downloads ---
+    path('challenge/<int:challenge_id>/download/', views.download_challenge_attachment, name='challenge_download'),
 ]
